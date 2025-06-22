@@ -1,0 +1,26 @@
+name: crux
+version: 0.1.0
+
+authors:
+  - lowkey <lowkey@kaffeinlabs.com>
+
+targets:
+  crux:
+    main: src/crux_cli.cr
+
+dependencies:
+  cling:
+    github: devnote-dev/cling
+    version: ">= 3.0.0"
+
+development_dependencies:
+  ameba:
+    github: crystal-ameba/ameba
+    version: ~> 1.6.4
+  minitest:
+    github: ysbaddaden/minitest.cr
+    version: ~> 1.3.0
+
+crystal: ">= 1.16.3"
+
+license: MIT

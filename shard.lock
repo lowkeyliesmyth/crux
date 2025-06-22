@@ -1,0 +1,14 @@
+version: 2.0
+shards:
+  ameba:
+    git: https://github.com/crystal-ameba/ameba.git
+    version: 1.6.4
+
+  cling:
+    git: https://github.com/devnote-dev/cling.git
+    version: 3.0.0
+
+  minitest:
+    git: https://github.com/ysbaddaden/minitest.cr.git
+    version: 1.3.0
+
