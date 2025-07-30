@@ -6,12 +6,13 @@ authors:
 
 targets:
   crux:
-    main: src/crux_cli.cr
+    main: src/cli.cr
 
 dependencies:
   cling:
     github: devnote-dev/cling
-    version: ">= 3.0.0"
+    #version: ">= 3.0.0"
+    commit: 3cd8b0baebb4b887b48a374f7e3f0887699fa4e5
 
 development_dependencies:
   ameba:
