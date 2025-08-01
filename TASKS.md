@@ -1,13 +1,13 @@
 # Initial Project Tasks: crux CLI
 
-This document outlines the initial tasks required to get the `crux` CLI project started.
+This document outlines the initial tasks required to get the `crux` CLI project started. Generated with input from gemini-2.5-pro
 
 ## Phase 1: Project Setup & Foundation
 
-* [ ] **1.1: Initialize Crystal Project:**
+* [X] **1.1: Initialize Crystal Project:**
     * Use the Crystal CLI to create a new application project: `crystal init app crux`.
 
-* [ ] **1.2: Add Dependencies to `shard.yml`:**
+* [X] **1.2: Add Dependencies to `shard.yml`:**
     * Add the `cling` shard to the `shard.yml` file.
         ```yaml
         dependencies:
@@ -17,18 +17,18 @@ This document outlines the initial tasks required to get the `crux` CLI project 
         ```
     * Run `shards install` to fetch and install the dependencies.
 
-* [ ] **1.3: Create Initial Directory Structure:**
+* [x] **1.3: Create Initial Directory Structure:**
     * Create the necessary directories for the command structure as outlined in `PLANNING.md`.
-        * `src/crux/commands/`
-        * `src/crux/commands/kube/`
+        * `src/commands/`
+        * `src/commands/kube/`
 
 ## Phase 2: `crux kube ysplit` Implementation
 
-* [ ] **2.1: Set up `cling` CLI structure in `src/cli.cr`:**
+* [ ] **2.1: Set up `cling` CLI structure in `src/crux.cr`:**
     * Define the `crux` root command, the `kube` subcommand, and the `ysplit` subcommand.
     * Add the required arguments and options to the `ysplit` command: `--file`, `--remote`, `--output`, `--name`.
 
-* [ ] **2.2: Implement core logic in `src/crux/commands/kube/ysplit.cr`:**
+* [ ] **2.2: Implement core logic in `src/commands/kube/ysplit.cr`:**
     * Create a `Ysplit` class or module to encapsulate the functionality.
     * Implement methods for reading from a local file and fetching from a remote URL.
     * Implement the main processing method that uses `YAML.parse_all`.
@@ -38,7 +38,7 @@ This document outlines the initial tasks required to get the `crux` CLI project 
     * When processing documents, add checks for the presence and validity of `metadata.name` and `kind`. If a document is invalid, print a colorized warning to `STDERR` (e.g., using `Colorize.yellow`) and skip to the next document.
 
 * [ ] **2.4: Connect `cling` to the core logic:**
-    * In the `run` method of the `ysplit` command in `src/cli.cr`, call the methods from the `Ysplit` module/class to execute the splitting logic.
+    * In the `run` method of the `ysplit` command in `src/crux.cr`, call the methods from the `Ysplit` module/class to execute the splitting logic.
     * Use `Colorize` to provide simple, colored feedback to the user (e.g., "Successfully wrote 5 files.").
 
 ## Phase 3: Testing & Refinement
@@ -69,5 +69,3 @@ This document outlines the initial tasks required to get the `crux` CLI project 
 
 * [ ] **4.2: Add Code Comments:**
     * Add comments to the Crystal code to explain the logic, especially for the error handling and filename collision sections.
-
-

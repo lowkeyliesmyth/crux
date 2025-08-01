@@ -1,4 +1,5 @@
 # Project: crux CLI
+Generated with input from gemini-2.5-pro
 
 ## 1. Project Overview
 
@@ -66,7 +67,7 @@ The CLI will be structured with nested commands using `cling` to ensure extensib
 
 ### 4.3. Code Implementation & Error Handling
 
-* **`src/cli.cr`**: This file will define the command structure, arguments, and options using `cling`. It will be the main entry point for the CLI logic.
+* **`src/crux.cr`**: This file will define the command structure, arguments, and options using `cling`. It will be the main entry point for the CLI logic.
 * **`src/crux/commands/kube/ysplit.cr`**: This file will contain the core logic for the `ysplit` command.
 * **YAML Parsing Errors:** If a document within the YAML stream is invalid or missing required fields (`metadata.name`, `kind`), the tool will print a colorized warning to `STDERR`, skip that document, and continue processing the rest.
 * **Filename Collisions:** If a file with the target name already exists, the tool will append a hyphen and a counter to the new filename (e.g., `my-app-deployment-1.yaml`, `my-app-deployment-2.yaml`).
