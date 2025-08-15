@@ -17,7 +17,7 @@ module Crux
 
       add_usage "crux <command> <subcommand> [options] <arguments>"
 
-      # TODO register commands here
+      # TODO register commands here with 'add_command'
     end
 
     def run(arguments : Cling::Arguments, options : Cling::Options) : Nil
