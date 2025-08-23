@@ -1,7 +1,7 @@
 module Crux::Commands
-  # Set some baseline behaviors, options, and styles
+  # Set some baseline behaviors, options, and styles as a baseline, to be inherited by all crux commands
   abstract class Base < Cling::Command
-    # Add these three options to all commands by default
+    # Add these three options and behaviors to all commands by default
     def initialize
       super
 
@@ -122,7 +122,7 @@ module Crux::Commands
     # Override upstream cling on_missing_arguments method
     # Enrich output with crux-specific log methods and help guidance
     def on_missing_arguments(args : Array(String))
-      help_command = "crux #{self.name} --help".colorize.blue.bold
+      help_command = "#{self.name} --help".colorize.blue.bold
 
       error "Missing required argument#{"s" if args.size > 1}:"
       error " #{args.join(", ")}"
