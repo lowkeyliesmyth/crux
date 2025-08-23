@@ -6,8 +6,6 @@ require "./commands/base"
 Colorize.on_tty_only!
 
 module Crux
-  VERSION = "0.1.0"
-
   class Main < Commands::Base
     def setup : Nil
       @name = "crux"
