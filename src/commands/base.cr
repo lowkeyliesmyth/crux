@@ -107,7 +107,7 @@ module Crux::Commands
       end
 
       if @debug
-        # handle failure in case ex.backtrace is nil
+        # handle failure in case ex.backtrace is nil and not provided
         if backtrace = ex.backtrace
           debug "Loading stack trace..."
           backtrace.each { |line| debug " " + line }
@@ -130,8 +130,24 @@ module Crux::Commands
       exit_program
     end
 
-    # Override upstream cling on_unknown_arguments method
+    # Override upstream cling on_unknown_arguments method for responding to unknown passed command args
     def on_unknown_arguments(args : Array(String))
+      command = %(#{self.name == "main" ? "" : self.name + " "}--help).colorize.blue.bold
+
+      error "Unexpected argument#{"s" if args.size > 1} for this command:"
+      error "\t#{args.join(", ")}".colorize.red
+      error "See '#{command}' for more information"
+      exit_program
+    end
+
+    # Override upstream cling on_unknown_arguments method for responding to unknown passed command options
+    def on_unknown_options(options : Array(String))
+      command = %(#{self.name == "main" ? "" : self.name + " "}--help).colorize.blue.bold
+
+      error "Unexpected option#{"s" if options.size > 1} for this command:"
+      error "\t#{options.join ", "}".colorize.red
+      error "See '#{command}' for more information"
+      exit_program
     end
   end
 end
