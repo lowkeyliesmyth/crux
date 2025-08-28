@@ -4,6 +4,7 @@ require "yaml"
 
 require "./commands/base"
 require "./commands/*"
+require "./commands/kube/*"
 Colorize.on_tty_only!
 
 module Crux
@@ -21,9 +22,9 @@ module Crux
 
       add_usage "crux <command> <subcommand> [options] <arguments>"
 
-      # TODO register commands here with 'add_command'
-
+      # TODO: register commands here with add_command
       add_command Commands::Version.new
+      add_command Commands::Kube.new
     end
 
     def run(arguments : Cling::Arguments, options : Cling::Options) : Nil
