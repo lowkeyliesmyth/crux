@@ -20,16 +20,16 @@ module Crux
         The CLI tool at the crux of your day to day developer experience.
         DESC
 
-      add_usage "crux <command> <subcommand> [options] <arguments>"
+      add_usage "crux <command> [subcommand] [arguments] [options]"
 
-      # TODO: register commands here with add_command
       add_command Commands::Kube.new
       add_command Commands::Version.new
     end
 
     def run(arguments : Cling::Arguments, options : Cling::Options) : Nil
       # Show help menu by default if no other commands are passed.
-      # Any valid commands will be captured in pre_run. And any invalid commands will get captured by cling validation logic. Leaving the only remaining execution path as "a user ran a bare crux command". Which probably means they don't know what to do.
+      # Any valid commands will be captured in pre_run. And any invalid commands will get captured by cling validation logic.
+      # Leaving the only remaining execution path as "a user ran a bare crux command". Which probably means they don't know what to do.
       stdout.puts help_template
     end
   end

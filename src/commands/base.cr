@@ -1,7 +1,7 @@
 module Crux::Commands
-  # Set some baseline behaviors, options, and styles as a baseline, to be inherited by all crux commands
+  # Override upstream Cling::Command with baseline command behaviors, options, and styles to be inherited by all crux commands.
   abstract class Base < Cling::Command
-    # Add these three options and behaviors to all commands by default
+    # Patch upstream method to include these three options and behaviors to all commands by default
     def initialize
       super
 
@@ -12,8 +12,8 @@ module Crux::Commands
       add_option 'h', "help", description: "show help information"
     end
 
-    # Override the upstream cling help_template method
-    # Let's dress up these help text colors, structure it, and ensure it has consistent spacing
+    # Returns the help template for this command.
+    # Overrides the upstream Cling::Command help_template method with help text colors, consistent output spacing, and structure.
     def help_template : String
       String.build do |io|
         io << "Usage".upcase.colorize.blue.bold << '\n'
@@ -122,6 +122,9 @@ module Crux::Commands
     # Override upstream cling on_missing_arguments method
     # Enrich output with crux-specific log methods and help guidance
     def on_missing_arguments(args : Array(String))
+      # FIXME: When this method is called from a subcommand, the help_command constructor fails to include the parent (crux) string in the constructor.
+      # When this method is called from a sub-sub-command, the help_command constructor fails to include the parent (kube) and grandparent (crux) in the constructor.
+      # Add some recursive detection logic to construct the correct actual help command to guide users.
       help_command = "#{self.name} --help".colorize.blue.bold
 
       error "Missing required argument#{"s" if args.size > 1}:"
@@ -132,21 +135,21 @@ module Crux::Commands
 
     # Override upstream cling on_unknown_arguments method for responding to unknown passed command args
     def on_unknown_arguments(args : Array(String))
-      command = %(#{self.name == "main" ? "" : self.name + " "}--help).colorize.blue.bold
+      help_command = %(#{self.name == "main" ? "" : self.name + " "}--help).colorize.blue.bold
 
       error "Unexpected argument#{"s" if args.size > 1} for this command:"
       error "\t#{args.join(", ")}".colorize.red
-      error "See '#{command}' for more information"
+      error "See '#{help_command}' for more information"
       exit_program
     end
 
     # Override upstream cling on_unknown_arguments method for responding to unknown passed command options
     def on_unknown_options(options : Array(String))
-      command = %(#{self.name == "main" ? "" : self.name + " "}--help).colorize.blue.bold
+      help_command = %(#{self.name == "main" ? "" : self.name + " "}--help).colorize.blue.bold
 
       error "Unexpected option#{"s" if options.size > 1} for this command:"
       error "\t#{options.join ", "}".colorize.red
-      error "See '#{command}' for more information"
+      error "See '#{help_command}' for more information"
       exit_program
     end
   end

@@ -5,9 +5,9 @@ module Crux::Commands
       @summary = "kubernetes utilities"
       @description = "Collection of utilities for working with kubernetes manifests and resources."
 
-      add_usage "crux kube <subcommand> [options] <arguments>"
+      add_usage "crux kube [subcommand] [arguments] [options]"
 
-      # TODO: Register subcommands here with add_command
+      add_command Commands::Ysplit.new
     end
 
     def run(arguments : Cling::Arguments, options : Cling::Options) : Nil
