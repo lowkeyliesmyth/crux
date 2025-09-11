@@ -7,13 +7,16 @@ module Crux::Commands
 
       @inherit_options = true
       @debug = false
+      add_option 'h', "help", description: "show help information"
       add_option "debug", description: "print debug information"
       add_option "no-color", description: "disable color codes"
-      add_option 'h', "help", description: "show help information"
     end
 
+    # TODO: Refactor to more closely mirror the Cling:Formatter.generate structure
+
     # Returns the help template for this command.
-    # Overrides the upstream Cling::Command help_template method with help text colors, consistent output spacing, and structure.
+    # Overrides the upstream Cling::Command.help_template method with help text colors, consistent output spacing, and structure.
+    # Only partially implements Cling::Formatter, so look at upstream for any missing functionality.
     def help_template : String
       String.build do |io|
         io << "Usage".upcase.colorize.blue.bold << '\n'
@@ -35,6 +38,21 @@ module Crux::Commands
             end
             io << '\n'
           end
+          io << '\n'
+        end
+
+        unless @arguments.empty?
+          io << "Arguments".upcase.colorize.blue.bold << '\n'
+          max_width = 4 + @arguments.each.max_of { |name, _| name.size }
+          @arguments.each do |name, arg|
+            io << name.colorize.bold.cyan
+            if description = arg.description
+              io << " " * (max_width - name.size)
+              io << description
+              io << " (required)".colorize.cyan if arg.required?
+            end
+          end
+          io << '\n'
           io << '\n'
         end
 
@@ -98,8 +116,9 @@ module Crux::Commands
       case ex
       # handle cling exceptions here
       when Cling::CommandError
+        help_command = %(#{full_command_path} --help).colorize.blue.bold
         error ex
-        error "See '#{"crux --help".colorize.blue}' for more help"
+        error "See '#{help_command}' for more help"
         # and I guess any other unexpected exceptions too
       else
         error "Unexpected exception:"
@@ -119,13 +138,29 @@ module Crux::Commands
       exit_program
     end
 
-    # Override upstream cling on_missing_arguments method
-    # Enrich output with crux-specific log methods and help guidance
+    # Build the full command path hierarchy from root to the current command
+    private def full_command_path : String
+      path_parts = [] of String
+      current_command = self
+
+      # Traverse up the command hierarchy and collect the command names
+      while current_command
+        if current_command.name == "main"
+          path_parts << "crux"
+        else
+          path_parts << current_command.name
+        end
+        current_command = current_command.parent
+      end
+
+      # Construct the command stack string
+      path_parts.reverse.join(" ")
+    end
+
+    # A hook method for when the command receives missing arguments during execution.
+    # Overriddes Cling::Command.on_missing_arguments with custom formatting
     def on_missing_arguments(args : Array(String))
-      # FIXME: When this method is called from a subcommand, the help_command constructor fails to include the parent (crux) string in the constructor.
-      # When this method is called from a sub-sub-command, the help_command constructor fails to include the parent (kube) and grandparent (crux) in the constructor.
-      # Add some recursive detection logic to construct the correct actual help command to guide users.
-      help_command = "#{self.name} --help".colorize.blue.bold
+      help_command = "#{full_command_path} --help".colorize.blue.bold
 
       error "Missing required argument#{"s" if args.size > 1}:"
       error " #{args.join(", ")}"
@@ -133,9 +168,10 @@ module Crux::Commands
       exit_program
     end
 
-    # Override upstream cling on_unknown_arguments method for responding to unknown passed command args
+    # A hook method for when the command receives unknown arguments during execution.
+    # Overriddes Cling::Command.on_unknown_arguments with custom formatting
     def on_unknown_arguments(args : Array(String))
-      help_command = %(#{self.name == "main" ? "" : self.name + " "}--help).colorize.blue.bold
+      help_command = %(#{full_command_path}--help).colorize.blue.bold
 
       error "Unexpected argument#{"s" if args.size > 1} for this command:"
       error "\t#{args.join(", ")}".colorize.red
@@ -143,14 +179,16 @@ module Crux::Commands
       exit_program
     end
 
-    # Override upstream cling on_unknown_arguments method for responding to unknown passed command options
+    # A hook method for when the command receives unknown options during execution.
+    # Overriddes Cling::Command.on_unknown_options with custom formatting
     def on_unknown_options(options : Array(String))
-      help_command = %(#{self.name == "main" ? "" : self.name + " "}--help).colorize.blue.bold
+      help_command = %(#{full_command_path} --help).colorize.blue.bold
 
       error "Unexpected option#{"s" if options.size > 1} for this command:"
       error "\t#{options.join ", "}".colorize.red
       error "See '#{help_command}' for more information"
       exit_program
+      # raise Cling::CommandError.new
     end
   end
 end
