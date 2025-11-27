@@ -12,8 +12,6 @@ module Crux::Commands
       add_option "no-color", description: "disable color codes"
     end
 
-    # TODO: Refactor to more closely mirror the Cling:Formatter.generate structure
-
     # Returns the help template for this command.
     # Overrides the upstream Cling::Command.help_template method with help text colors, consistent output spacing, and structure.
     # Only partially implements Cling::Formatter, so look at upstream for any missing functionality.
@@ -92,7 +90,6 @@ module Crux::Commands
       end
     end
 
-    # TODO: Improve these logging methods later. Look to charmbracelet/log for inspiration on expanding helper functionality and visualizations
     def debug(data : _) : Nil
       return unless @debug
       stdout << "(#) ".colorize.blue << data << '\n'

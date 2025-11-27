@@ -27,9 +27,9 @@ module Crux
     end
 
     def run(arguments : Cling::Arguments, options : Cling::Options) : Nil
-      # Show help menu by default if no other commands are passed.
       # Any valid commands will be captured in pre_run. And any invalid commands will get captured by cling validation logic.
       # Leaving the only remaining execution path as "a user ran a bare crux command". Which probably means they don't know what to do.
+      # So show help menu by default if no other commands are passed.
       stdout.puts help_template
     end
   end
