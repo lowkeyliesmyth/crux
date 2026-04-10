@@ -6,13 +6,13 @@ require "yaml"
 module Crux::Commands
   class Ysplit < Kube
     # Base domain exception
-    class YSplitError < Exception
+    class YsplitError < Exception
     end
 
     # Use standard YAML::ParseException when YAML parsing fails.
 
     # For catching failures when the YAML doc is valid but is not a semantically valid K8s object
-    class K8sDocumentError < YSplitError
+    class K8sDocumentError < YsplitError
     end
 
     # Represents the minimum required Kubernetes document YAML manifest with kind and metadata.name.
@@ -36,7 +36,7 @@ module Crux::Commands
     # Encapsulates the core YAML splitting logic, separated from the CLI command class so it can be tested independently.
     #
     # Given a multi-doc YAML string, splits each document into its own `<metadata.name>-<kind>.yaml` file (with optional prefix).
-    struct YSplitProcessor
+    struct YsplitProcessor
       getter prefix : String?
       getter outdir : String
 
@@ -157,14 +157,14 @@ module Crux::Commands
                 else
                   exit_program
                 end
-      processor = YSplitProcessor.new(outdir, prefix)
+      processor = YsplitProcessor.new(outdir, prefix)
       result = processor.process(content, stdout, stderr)
       result[:written]
       result[:skipped]
 
       count_label = result[:written] == 1 ? "1 file" : "#{result[:written]} files"
       info "Complete: #{count_label} written, #{result[:skipped]} skipped."
-    rescue ex : YSplitError
+    rescue ex : YsplitError
       error "#{"Processing Error:".colorize.bold}"
       error "\t#{ex.message}"
       exit_program
@@ -185,7 +185,7 @@ module Crux::Commands
          url.path.split(".").last.downcase == "yaml"
         url.to_s
       else
-        raise YSplitError.new("'#{url.to_s.colorize.red}' is not a valid url containing YAML")
+        raise YsplitError.new("'#{url.to_s.colorize.red}' is not a valid url containing YAML")
       end
     end
 
