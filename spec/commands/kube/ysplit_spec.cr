@@ -3,60 +3,60 @@ require "../../spec_helper"
 # Fixture YAML doc strings shared across multiple specs
 
 VALID_SINGLE_DOC = <<-YAML
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: my-app
-YAML
+  apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    name: my-app
+  YAML
 
 VALID_MULTI_DOC = <<-YAML
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: my-app
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: my-app
-YAML
+  apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    name: my-app
+  ---
+  apiVersion: v1
+  kind: Service
+  metadata:
+    name: my-app
+  YAML
 
 MISSING_METADATA_DOC = <<-YAML
-apiVersion: apps/v1
-kind: Deployment
-YAML
+  apiVersion: apps/v1
+  kind: Deployment
+  YAML
 
 MISSING_KIND_DOC = <<-YAML
-apiVersion: apps/v1
-metadata:
-  name: orphan
-YAML
+  apiVersion: apps/v1
+  metadata:
+    name: orphan
+  YAML
 
 MISSING_NAME_DOC = <<-YAML
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  namespace: default
-YAML
+  apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    namespace: default
+  YAML
 
 NULL_NAME_DOC = <<-YAML
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name:
-YAML
+  apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    name:
+  YAML
 
 # One valid doc, one malformed doc
 MIXED_DOC = <<-YAML
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: my-app
----
-apiVersion: v1
-metadata:
-  name: my-app
-YAML
+  apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    name: my-app
+  ---
+  apiVersion: v1
+  metadata:
+    name: my-app
+  YAML
 
 describe Crux::Commands::Ysplit do
   subject = Crux::Commands::Ysplit.new
@@ -65,7 +65,7 @@ describe Crux::Commands::Ysplit do
     context "with valid URLS" do
       it "accepts http:// URL with .yaml extension" do
         url = URI.parse("http://example.com/manifests.yaml")
-        result = subject.validate_yaml_url(url)
+        result = subject.validate_yaml_url(url).should be_truthy
         result.should be_truthy
       end
 
@@ -93,7 +93,7 @@ describe Crux::Commands::Ysplit do
       it "rejects URL without .yaml extension" do
         url = URI.parse("https://example.com/file.json")
         expect_raises(Crux::Commands::Ysplit::YsplitError) do
-          result = subject.validate_yaml_url(url)
+          subject.validate_yaml_url(url)
         end
       end
 

@@ -20,6 +20,7 @@ module Crux::Commands
     struct K8sDoc
       include YAML::Serializable
 
+      # ameba:disable Naming/VariableNames
       getter apiVersion : String?
       getter kind : String?
       getter metadata : Metadata?
