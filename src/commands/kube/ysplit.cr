@@ -15,7 +15,8 @@ module Crux::Commands
     class K8sDocumentError < YsplitError
     end
 
-    # Represents the minimum required Kubernetes document YAML manifest with kind and metadata.name.
+    # TODO: Actually use this struct and validation somewhere in the processing pipeline, or remove it.
+    # Represents the minimum required Kubernetes document YAML manifest with apiVersion, kind, and metadata.name.
     struct K8sDoc
       include YAML::Serializable
 
