@@ -91,7 +91,7 @@ module Crux::Commands
       #
       # Pattern with optional prefix: `<outdir>/<prefix>-<metadata.name>-<kind>.yaml`
       def build_filename(resource_name : String, kind : String) : Path
-        base = @prefix ? "#{@prefix}-#{resource_name}-#{kind}" : "#{resource_name}-#{kind}".downcase
+        base = @prefix ? "#{@prefix}-#{resource_name.downcase}-#{kind.downcase}" : "#{resource_name}-#{kind}".downcase
 
         Path.new(@outdir, "#{base}.yaml")
       end
@@ -184,7 +184,7 @@ module Crux::Commands
       valid_scheme : Regex = /^https?$/
       if url.scheme.try { |scheme| valid_scheme.matches?(scheme) } &&
          url.host &&
-         url.path.split(".").last.downcase == "yaml"
+         (["yaml", "yml"].includes?(url.path.split(".").last.downcase))
         url.to_s
       else
         raise YsplitError.new("'#{url.to_s.colorize.red}' is not a valid url containing YAML")
