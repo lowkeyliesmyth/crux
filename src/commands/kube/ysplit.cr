@@ -19,6 +19,7 @@ module Crux::Commands
     struct K8sDoc
       include YAML::Serializable
 
+      getter apiVersion : String?
       getter kind : String?
       getter metadata : Metadata?
 
@@ -27,9 +28,9 @@ module Crux::Commands
         getter name : String?
       end
 
-      # Returns `true` if the document is valid: has a kind and metadata with a name.
+      # Returns `true` if the doc meets the minimum required fields for a valid K8s object
       def valid? : Bool
-        !kind.nil? && !metadata.try(&.name).nil?
+        !apiVersion.nil? && !kind.nil? && !metadata.try(&.name).nil?
       end
     end
 
@@ -40,7 +41,7 @@ module Crux::Commands
       getter prefix : String?
       getter outdir : String
 
-      def initialize(@outdir : String, @prefix : String? = Nil)
+      def initialize(@outdir : String, @prefix : String? = nil)
       end
 
       # Processes a multi-doc YAML string and writes each doc to a separate file in outdir.
@@ -59,12 +60,13 @@ module Crux::Commands
           # Silently skip them.
           next if doc.raw.nil?
 
+          api_version = doc["apiVersion"]?.try(&.as_s?)
           kind = doc["kind"]?.try(&.as_s?)
           name = doc["metadata"]?.try(&.["name"]?).try(&.as_s?)
 
-          unless kind && name
+          unless api_version && kind && name
             err_io.puts "Document #{i + 1} is invalid."
-            err_io.puts "Missing 'kind' or 'metadata.name' fields, skipping.\n"
+            err_io.puts "Missing 'apiVersion', 'kind' or 'metadata.name' fields, skipping.\n"
             skipped += 1
             next
           end
