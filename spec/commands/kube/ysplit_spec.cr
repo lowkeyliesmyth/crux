@@ -58,6 +58,10 @@ MIXED_DOC = <<-YAML
     name: my-app
   YAML
 
+MALFORMED_YAML = <<-YAML
+  key: [unclosed bracket
+  YAML
+
 describe Crux::Commands::Ysplit do
   subject = Crux::Commands::Ysplit.new
 
@@ -65,7 +69,7 @@ describe Crux::Commands::Ysplit do
     context "with valid URLS" do
       it "accepts http:// URL with .yaml extension" do
         url = URI.parse("http://example.com/manifests.yaml")
-        result = subject.validate_yaml_url(url).should be_truthy
+        result = subject.validate_yaml_url(url)
         result.should be_truthy
       end
 
@@ -244,10 +248,33 @@ describe Crux::Commands::Ysplit::YsplitProcessor do
     end
 
     context "with invalid YAML" do
-      pending "skips doc missing 'kind' and emits warning to err_io"
-      pending "skips doc missing 'metadata.name' and emits warning to err_io"
-      pending "skips doc with null name and emits warning to err_io"
-      pending "raises YAML::ParseException for malformed YAML input"
+      it "skips doc missing 'kind' and emits warning to err_io" do
+        processor = Crux::Commands::Ysplit::YsplitProcessor.new(temp_dir)
+        result = processor.process(MISSING_KIND_DOC, out_io, err_io)
+        result[:written].should eq(0)
+        result[:skipped].should eq(1)
+        err_io.to_s.should contain("Missing required")
+      end
+      it "skips doc missing 'metadata.name' and emits warning to err_io" do
+        processor = Crux::Commands::Ysplit::YsplitProcessor.new(temp_dir)
+        result = processor.process(MISSING_NAME_DOC, out_io, err_io)
+        result[:written].should eq(0)
+        result[:skipped].should eq(1)
+        err_io.to_s.should contain("Missing required")
+      end
+      it "skips doc with null name and emits warning to err_io" do
+        processor = Crux::Commands::Ysplit::YsplitProcessor.new(temp_dir)
+        result = processor.process(NULL_NAME_DOC, out_io, err_io)
+        result[:written].should eq(0)
+        result[:skipped].should eq(1)
+        err_io.to_s.should contain("Missing required")
+      end
+      it "raises YAML::ParseException for malformed YAML input" do
+        processor = Crux::Commands::Ysplit::YsplitProcessor.new(temp_dir)
+        expect_raises(YAML::ParseException) do
+          processor.process(MALFORMED_YAML, out_io, err_io)
+        end
+      end
     end
 
     context "when output dir is not writable" do
