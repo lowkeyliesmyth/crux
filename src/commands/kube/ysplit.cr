@@ -15,7 +15,6 @@ module Crux::Commands
     class K8sDocumentError < YsplitError
     end
 
-    # TODO: Actually use this struct and validation somewhere in the processing pipeline, or remove it.
     # Represents the minimum required Kubernetes document YAML manifest with apiVersion, kind, and metadata.name.
     struct K8sDoc
       include YAML::Serializable
@@ -33,6 +32,16 @@ module Crux::Commands
       # Returns `true` if the doc meets the minimum required fields for a valid K8s object
       def valid? : Bool
         !apiVersion.nil? && !kind.nil? && !metadata.try(&.name).nil?
+      end
+
+      # Returns `metadata.name`. Only safe to call after `valid?` returns true.
+      def resource_name : String
+        metadata.not_nil!.name.not_nil!
+      end
+
+      # Returns `kind`. Only safe to call after `valid?` returns true.
+      def resource_kind : String
+        kind.not_nil!
       end
     end
 
@@ -61,19 +70,16 @@ module Crux::Commands
           # Null docs occur from bare --- separators
           # Silently skip them.
           next if doc.raw.nil?
+          k8s_doc = K8sDoc.from_yaml(doc.to_yaml)
 
-          api_version = doc["apiVersion"]?.try(&.as_s?)
-          kind = doc["kind"]?.try(&.as_s?)
-          name = doc["metadata"]?.try(&.["name"]?).try(&.as_s?)
-
-          unless api_version && kind && name
+          unless k8s_doc.valid?
             err_io.puts "Document #{i + 1} is invalid."
-            err_io.puts "Missing 'apiVersion', 'kind' or 'metadata.name' fields, skipping.\n"
+            err_io.puts "Missing required 'apiVersion', 'kind' or 'metadata.name' fields, skipping.\n"
             skipped += 1
             next
           end
 
-          filename = build_filename(name, kind)
+          filename = build_filename(k8s_doc.resource_name, k8s_doc.resource_kind)
 
           begin
             File.write(filename, doc.to_yaml)
@@ -182,6 +188,7 @@ module Crux::Commands
     end
 
     # Validate that the user-provided URL is an HTTP endpoint and likely contains YAML
+    # Returns string if valid, raises YsplitError if invalid.
     def validate_yaml_url(url : URI) : String
       valid_scheme : Regex = /^https?$/
       if url.scheme.try { |scheme| valid_scheme.matches?(scheme) } &&
