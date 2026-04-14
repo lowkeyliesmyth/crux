@@ -81,6 +81,7 @@ module Crux::Commands
 
           filename = build_filename(k8s_doc.resource_name, k8s_doc.resource_kind)
 
+          # TODO: Update out_io formatting to match Crux::Commands::Base#info, and Crux::Commands::Base#error
           begin
             File.write(filename, doc.to_yaml)
             out_io.puts "Written: #{filename}\n"
@@ -169,11 +170,9 @@ module Crux::Commands
                 end
       processor = YsplitProcessor.new(outdir, prefix)
       result = processor.process(content, stdout, stderr)
-      result[:written]
-      result[:skipped]
 
       count_label = result[:written] == 1 ? "1 file" : "#{result[:written]} files"
-      info "Complete: #{count_label} written, #{result[:skipped]} skipped."
+      info "#{"Complete:".colorize.bold.green} #{count_label} written, #{result[:skipped]} skipped."
     rescue ex : YsplitError
       error "#{"Processing Error:".colorize.bold}"
       error "\t#{ex.message}"
@@ -215,13 +214,47 @@ module Crux::Commands
       end
     end
 
-    # Fetches YAML content from a remote HTTP or HTTPS URL.
-    # Returns the HTTP response body.
-    # Exits with an error on network failure or non-2XX status code
-    private def fetch_remote(url : URI) : String
-      # TODO: Build redirect-following logic, checking `Location` header for redirects on each 3xx response. Github releases redirec fails
+    # Max response body size in MB
+    # Manifest retrieval from remote URLs rarely exceeds a few MB. 20MB bounds the request size with sufficient headroom while guarding against crazy large responses.
+    MAX_RESPONSE_BYTES = 20 * 1024 * 1024
 
+    # Required for retrieval from Github Releases, which use redirects.
+    # Guard against processing too many redirects causing infinite loops.
+    MAX_REDIRECTS = 5
+
+    # Fetches YAML content from a remote HTTP or HTTPS URL.
+    # Follows up to MAX_REDIRECTS redirects (3xx in header).
+    # Enforces MAX_REMOTE_BYTES size limit on the response body.
+    # Returns the HTTP response body.
+    # Exits with an error on network failure, non-2XX status code, or exceeded limits.
+    protected def fetch_remote(url : URI, redirects_remaining : Int32 = MAX_REDIRECTS) : String
       response = HTTP::Client.get(url)
+
+      # Handle redirects here up to MAX_REDIRECTS times
+      if response.status.redirection?
+        location = response.headers["Location"]?
+        unless location
+          error "HTTP #{response.status_code}: Redirect with no Location header from '#{url}'"
+          exit_program 1
+        end
+
+        if redirects_remaining <= 0
+          error "Max redirects exceeded (#{MAX_REDIRECTS}): Redirect loop detected"
+          exit_program 1
+        end
+
+        redirect_uri = URI.parse(location)
+        # Resolve relative redirects against the original url
+        redirect_uri = url.resolve(redirect_uri) unless redirect_uri.absolute?
+
+        redirects_remaining -= 1
+        return fetch_remote(redirect_uri, redirects_remaining)
+      end
+
+      if response.body.bytesize > MAX_RESPONSE_BYTES
+        error "Response body exceeds #{MAX_RESPONSE_BYTES / 1024 / 1024}MB limit"
+        exit_program 1
+      end
       unless response.success?
         error "HTTP #{response.status_code}: #{response.body}"
         exit_program 1
