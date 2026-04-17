@@ -16,6 +16,12 @@ development_dependencies:
     version: ~> 1.6.4
     #tag: 1.6.4
 
+  webmock:
+    github: manastech/webmock.cr
+    # HEAD of master branch as of 4/13/26
+    commit: fde6b20d5b80401a967e044b1a3e80ee391bed60
+    #branch: master
+
 targets:
   crux:
     main: src/main.cr

@@ -1,7 +1,7 @@
 require "../../spec_helper"
+require "webmock"
 
 # Fixture YAML doc strings shared across multiple specs
-
 VALID_SINGLE_DOC = <<-YAML
   apiVersion: apps/v1
   kind: Deployment
@@ -62,6 +62,121 @@ MALFORMED_YAML = <<-YAML
   key: [unclosed bracket
   YAML
 
+# Created a thin test subclass to expose protected methods and enable testing via spec below
+# Why? `protected` methods cannot be called directly from outside the class, so we need a test subclass to expose them and make them testable in specs.
+class TestableYsplit < Crux::Commands::Ysplit
+  def test_fetch_remote(url : URI, redirects_remaining : Int32 = MAX_REDIRECTS) : String
+    fetch_remote(url, redirects_remaining)
+  end
+end
+
+describe TestableYsplit do
+  describe "#fetch_remote" do
+    # Still use the `subject` defined in the context
+    # Otherwise recreate it if necessary
+    subject = TestableYsplit.new
+
+    Spec.after_each do
+      WebMock.reset
+    end
+
+    context "successful fetch" do
+      it "returns response body on 200 OK" do
+        WebMock.stub(:get, "https://example.com/manifest.yaml")
+          .to_return(status: 200, body: VALID_SINGLE_DOC)
+
+        result = subject.test_fetch_remote(URI.parse("https://example.com/manifest.yaml"))
+        result.should eq(VALID_SINGLE_DOC)
+      end
+    end
+
+    context "follows redirects" do
+      it "follows a single 301 redirect and returns the body" do
+        WebMock.stub(:get, "https://example.com/manifest.yml")
+          .to_return(status: 301, headers: {"Location" => "https://cdn.example.com/manifest.yaml"})
+        WebMock.stub(:get, "https://cdn.example.com/manifest.yaml")
+          .to_return(status: 200, body: VALID_SINGLE_DOC)
+
+        result = subject.test_fetch_remote(URI.parse("https://example.com/manifest.yml"))
+        result.should eq(VALID_SINGLE_DOC)
+      end
+
+      it "follows a chain of redirects (302 -> 301 -> 200)" do
+        WebMock.stub(:get, "https://example.com/first.yaml")
+          .to_return(status: 302, headers: {"Location" => "https://example.com/second.yaml"})
+        WebMock.stub(:get, "https://example.com/second.yaml")
+          .to_return(status: 301, headers: {"Location" => "https://example.com/third.yaml"})
+        WebMock.stub(:get, "https://example.com/third.yaml")
+          .to_return(status: 200, body: VALID_SINGLE_DOC)
+
+        result = subject.test_fetch_remote(URI.parse("https://example.com/first.yaml"))
+        result.should eq(VALID_SINGLE_DOC)
+      end
+
+      it "resolves relative Location headers against the original URL" do
+        WebMock.stub(:get, "https://example.com/main/manifest.yaml")
+          .to_return(status: 302, headers: {"Location" => "/subdir/level/stuff.yaml"})
+        WebMock.stub(:get, "https://example.com/subdir/level/stuff.yaml")
+          .to_return(status: 200, body: VALID_SINGLE_DOC)
+
+        result = subject.test_fetch_remote(URI.parse("https://example.com/main/manifest.yaml"))
+        result.should eq(VALID_SINGLE_DOC)
+      end
+    end
+
+    context "respects redirect limits" do
+      it "raises YsplitError after exceeding MAX_REDIRECTS (5)" do
+        6.times do |i|
+          WebMock.stub(:get, "https://example.com/redirect#{i}.yaml")
+            .to_return(status: 302, headers: {"Location" => "https://example.com/redirect#{i + 1}.yaml"})
+        end
+
+        expect_raises(Crux::Commands::Ysplit::YsplitError, /Max redirects exceeded/) do
+          subject.test_fetch_remote(URI.parse("https://example.com/redirect0.yaml"))
+        end
+      end
+
+      it "raises YsplitError when redirect has no Location header" do
+        WebMock.stub(:get, "https://example.com/manifest.yml")
+          .to_return(status: 301, headers: {} of String => String)
+
+        expect_raises(Crux::Commands::Ysplit::YsplitError, /Redirect with no Location header/) do
+          subject.test_fetch_remote(URI.parse("https://example.com/manifest.yml"))
+        end
+      end
+    end
+
+    context "respects size limits" do
+      it "raises YsplitError when response body exceeds MAX_RESPONSE_BYTES (20MB)" do
+        oversized = "a" * (Crux::Commands::Ysplit::MAX_RESPONSE_BYTES + 1)
+        WebMock.stub(:get, "https://example.com/manifests.yaml")
+          .to_return(status: 200, body: oversized)
+
+        expect_raises(Crux::Commands::Ysplit::YsplitError, /Response body exceeds/) do
+          subject.test_fetch_remote(URI.parse("https://example.com/manifests.yaml"))
+        end
+      end
+    end
+
+    context "raises on failure cases" do
+      it "raises YsplitError on non-2xx/3xx responses" do
+        WebMock.stub(:get, "https://example.com/manifests.yaml")
+          .to_return(status: 404, body: "Not Found")
+
+        expect_raises(Crux::Commands::Ysplit::YsplitError, /HTTP 404/) do
+          subject.test_fetch_remote(URI.parse("https://example.com/manifests.yaml"))
+        end
+      end
+
+      it "raises YsplitError on network failures" do
+        expect_raises(Crux::Commands::Ysplit::YsplitError, /Network error/) do
+          subject.test_fetch_remote(URI.parse("https://no-stub-registered.com/manifests.yaml"))
+        end
+      end
+    end
+  end
+end
+
 describe Crux::Commands::Ysplit do
   subject = Crux::Commands::Ysplit.new
 
@@ -94,7 +209,7 @@ describe Crux::Commands::Ysplit do
         end
       end
 
-      it "rejects URL without .yaml extension" do
+      it "rejects URL without .yaml|.yml extension" do
         url = URI.parse("https://example.com/file.json")
         expect_raises(Crux::Commands::Ysplit::YsplitError) do
           subject.validate_yaml_url(url)
