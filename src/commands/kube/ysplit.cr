@@ -9,11 +9,7 @@ module Crux::Commands
     class YsplitError < Exception
     end
 
-    # Use standard YAML::ParseException when YAML parsing fails.
-
-    # For catching failures when the YAML doc is valid but is not a semantically valid K8s object
-    class K8sDocumentError < YsplitError
-    end
+    # Just use standard YAML::ParseException when YAML parsing fails.
 
     # Represents the minimum required Kubernetes document YAML manifest with apiVersion, kind, and metadata.name.
     struct K8sDoc
@@ -36,11 +32,13 @@ module Crux::Commands
 
       # Returns `metadata.name`. Only safe to call after `valid?` returns true.
       def resource_name : String
+        # ameba:disable Lint/NotNil
         metadata.not_nil!.name.not_nil!
       end
 
       # Returns `kind`. Only safe to call after `valid?` returns true.
       def resource_kind : String
+        # ameba:disable Lint/NotNil
         kind.not_nil!
       end
     end
@@ -177,10 +175,6 @@ module Crux::Commands
       error "#{"Processing Error:".colorize.bold}"
       error "\t#{ex.message}"
       exit_program
-    rescue ex : K8sDocumentError
-      error "#{"Kube Manifest Error:".colorize.bold}"
-      error "\t#{ex.message}"
-      exit_program
     end
 
     def post_run(arguments : Cling::Arguments, options : Cling::Options) : Nil
@@ -234,13 +228,11 @@ module Crux::Commands
       if response.status.redirection?
         location = response.headers["Location"]?
         unless location
-          error "HTTP #{response.status_code}: Redirect with no Location header from '#{url}'"
-          exit_program 1
+          raise YsplitError.new("HTTP #{response.status_code}: Redirect with no Location header from '#{url}'")
         end
 
         if redirects_remaining <= 0
-          error "Max redirects exceeded (#{MAX_REDIRECTS}): Redirect loop detected"
-          exit_program 1
+          raise YsplitError.new("Max redirects exceeded (#{MAX_REDIRECTS}): Redirect loop detected")
         end
 
         redirect_uri = URI.parse(location)
@@ -252,17 +244,16 @@ module Crux::Commands
       end
 
       if response.body.bytesize > MAX_RESPONSE_BYTES
-        error "Response body exceeds #{MAX_RESPONSE_BYTES / 1024 / 1024}MB limit"
-        exit_program 1
+        raise YsplitError.new("Response body exceeds #{MAX_RESPONSE_BYTES / 1024 / 1024}MB limit")
       end
       unless response.success?
-        error "HTTP #{response.status_code}: #{response.body}"
-        exit_program 1
+        raise YsplitError.new("HTTP #{response.status_code}: #{response.body}")
       end
       response.body
+    rescue ex : YsplitError
+      raise ex
     rescue ex : Exception
-      error "Network error fetching '#{url}': #{ex.message}"
-      exit_program 1
+      raise YsplitError.new("Network error fetching '#{url}': #{ex.message}")
     end
   end
 end
