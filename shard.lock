@@ -8,3 +8,7 @@ shards:
     git: https://github.com/devnote-dev/cling.git
     version: 3.1.0
 
+  webmock:
+    git: https://github.com/manastech/webmock.cr.git
+    version: 0.14.0+git.commit.fde6b20d5b80401a967e044b1a3e80ee391bed60
+

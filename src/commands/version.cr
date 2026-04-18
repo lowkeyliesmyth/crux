@@ -4,7 +4,9 @@ module Crux::Commands
       @debug = true
       @name = "version"
       @summary = "show tool version"
-      @description = "Shows the version information for Crux."
+      @description = "Shows the version information for Crux"
+
+      add_usage "crux version"
     end
 
     def run(arguments : Cling::Arguments, options : Cling::Options) : Nil
