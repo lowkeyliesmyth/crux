@@ -9,7 +9,7 @@ Colorize.on_tty_only!
 
 module Crux
   # Build metadata constants generated at compile time and consumed by the Version command
-  VERSION    = "0.1.0"
+  VERSION    = {{ `shards version #{__DIR__}/..`.stringify.chomp }}
   BUILD_DATE = {{ `date +%F`.stringify.chomp }}
   BUILD_HASH = {{ `git rev-parse HEAD`.stringify[0...8] }}
 
