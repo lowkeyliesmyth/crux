@@ -7,6 +7,7 @@ module Crux::Commands
 
       add_usage "crux kube [subcommand] [arguments] [options]"
 
+      add_command Commands::Helmsplit.new
       add_command Commands::Ysplit.new
     end
 
