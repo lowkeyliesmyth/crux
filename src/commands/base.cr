@@ -48,6 +48,7 @@ module Crux::Commands
               io << " " * (max_width - name.size)
               io << description
               io << " (required)".colorize.cyan if arg.required?
+              io << '\n'
             end
           end
           io << '\n'
