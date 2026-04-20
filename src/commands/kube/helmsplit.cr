@@ -43,6 +43,63 @@ module Crux::Commands
     end
 
     def run(arguments : Cling::Arguments, options : Cling::Options) : Nil
+      outdir = arguments.get("outdir").as_s
+      chart = arguments.get("chart").as_s
+      prefix = options.get?("prefix").try(&.as_s?)
+      version = options.get?("version").try(&.as_s?)
+      values = options.get?("file").try(&.as_a) || [] of String
+
+      # TODO: Actually implement this helm rendering method, which takes a chart, version, and values array and returns a String megamanifest
+      # rendered = render_helm(chart, version, values)
+      rendered = ""
+
+      processor = Ysplit::YsplitProcessor.new(outdir, prefix)
+      result = processor.process(rendered, stdout, stderr)
+
+      count_label = result[:written] == 1 ? "1 file" : "#{result[:written]} files"
+      info "#{"Complete:".colorize.bold.green} #{count_label} written, #{result[:skipped]} skipped."
+    rescue ex : HelmSplitError
+      error "#{"Helm Error:".colorize.bold}"
+      error "\t#{ex.message}"
+      exit_program 1
+    end
+
+    def post_run(arguments : Cling::Arguments, options : Cling::Options) : Nil
+    end
+
+    # Renders a helm chart via `helm template` and returns the rendered manifest as a String.
+    # Raises HelmsplitError on non-zero exit.
+    private def render_chart(chart : String, version : String?, values : Array(String)) : String
+      args = ["template", chart, "--include-crds"]
+      args.concat(["--version", version]) if version
+      values.each { |v| args << "--values=#{v}" }
+
+      stdout_io = IO::Memory.new
+      stderr_io = IO::Memory.new
+      status = Process.run("helm", args, stdout: stdout_io, stderr: stderr_io)
+      unless status.success?
+        raise HelmsplitError.new("helm template failed with exit cod #{status.exit_code}:\n#{stderr_io.to_s.strip}")
+      end
+      stdout_io.to_s
+    end
+
+    # Returns the chart reference to pass to helm as either an expanded local path or the original 'repo/chart' string.
+    # Increases confidence that the user-submitted string is a valid local chart path before deferring to remote resolution.
+    # Used to reduce confusing errors or misinterpretations between chart path vs 'repo/chart' collisions
+    private def resolve_chart(chart : String) : String
+      looks_local = chart.starts_with?('.') || chart.starts_with?('/') || chart.starts_with?('~')
+      expanded = File.expand_path(chart)
+
+      if File.directory?(expanded)
+        unless File.file?(File.join(expanded, "Chart.yaml"))
+          raise HelmSplitError.new("Missing Chart.yaml, not a helm chart: #{chart}")
+        end
+        expanded
+      elsif looks_local
+        raise HelmSplitError.new("Chart path not found: #{chart}")
+      else
+        chart
+      end
     end
   end
 end

@@ -27,5 +27,6 @@ Splits multi-document YAML manifests into separate files (one per K8s object).
 Renders a Helm chart and splits the  resulting multi-doc output into separate files (one per K8s  object).
 
 ### Future features to implement
-
+- [ ] validate user-submitted chart repo string against repositories.yaml repos list
+- [ ] 
 ### Bugs to fix
