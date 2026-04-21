@@ -10,7 +10,7 @@ module Crux::Commands
         Renders a Helm chart and splits the resulting multi-doc output into separate local files.
 
         Outputs one valid YAML manifest file per detected K8s object.
-      DESC
+        DESC
 
       add_usage "crux kube helmsplit <outdir> <chart> [options]"
       add_usage ""
@@ -44,21 +44,19 @@ module Crux::Commands
 
     def run(arguments : Cling::Arguments, options : Cling::Options) : Nil
       outdir = arguments.get("outdir").as_s
-      chart = arguments.get("chart").as_s
+      chart = resolve_chart(arguments.get("chart").as_s)
       prefix = options.get?("prefix").try(&.as_s?)
       version = options.get?("version").try(&.as_s?)
       values = options.get?("file").try(&.as_a) || [] of String
 
-      # TODO: Actually implement this helm rendering method, which takes a chart, version, and values array and returns a String megamanifest
-      # rendered = render_helm(chart, version, values)
-      rendered = ""
+      rendered = render_chart(chart, version, values)
 
       processor = Ysplit::YsplitProcessor.new(outdir, prefix)
       result = processor.process(rendered, stdout, stderr)
 
       count_label = result[:written] == 1 ? "1 file" : "#{result[:written]} files"
       info "#{"Complete:".colorize.bold.green} #{count_label} written, #{result[:skipped]} skipped."
-    rescue ex : HelmSplitError
+    rescue ex : HelmsplitError
       error "#{"Helm Error:".colorize.bold}"
       error "\t#{ex.message}"
       exit_program 1
@@ -76,9 +74,9 @@ module Crux::Commands
 
       stdout_io = IO::Memory.new
       stderr_io = IO::Memory.new
-      status = Process.run("helm", args, stdout: stdout_io, stderr: stderr_io)
+      status = Process.run("helm", args, output: stdout_io, error: stderr_io)
       unless status.success?
-        raise HelmsplitError.new("helm template failed with exit cod #{status.exit_code}:\n#{stderr_io.to_s.strip}")
+        raise HelmsplitError.new("helm template failed with exit code #{status.exit_code}:\n#{stderr_io.to_s.strip}")
       end
       stdout_io.to_s
     end
@@ -92,11 +90,11 @@ module Crux::Commands
 
       if File.directory?(expanded)
         unless File.file?(File.join(expanded, "Chart.yaml"))
-          raise HelmSplitError.new("Missing Chart.yaml, not a helm chart: #{chart}")
+          raise HelmsplitError.new("Missing Chart.yaml, not a helm chart: #{chart}")
         end
         expanded
       elsif looks_local
-        raise HelmSplitError.new("Chart path not found: #{chart}")
+        raise HelmsplitError.new("Chart path not found: #{chart}")
       else
         chart
       end
