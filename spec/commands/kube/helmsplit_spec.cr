@@ -12,6 +12,10 @@ class TestableHelmsplit < Crux::Commands::Helmsplit
   def test_render_chart(chart : String, version : String?, values : Array(String)) : String
     render_chart(chart, version, values)
   end
+
+  def test_sanitize_rendered(rendered : String) : String
+    sanitize_rendered(rendered)
+  end
 end
 
 # TODO: Refactor this test and the source helmsplit to use an abstract collaborator pattern
@@ -149,6 +153,53 @@ describe Crux::Commands::Helmsplit do
             subject.test_render_chart("definitely-missing-chart", nil, [] of String)
           end
         end
+      end
+    end
+  end
+
+  describe "#sanitize_rendered" do
+    subject = TestableHelmsplit.new
+
+    context "pass 1: substring pruning" do
+      it "strips 'RELEASE-NAME-' without dropping the line" do
+        subject.test_sanitize_rendered("  name: RELEASE-NAME-my-app\n").should eq("  name: my-app\n")
+      end
+
+      it "strips 'release-name-' without dropping the line" do
+        subject.test_sanitize_rendered("  name: release-name-my-app\n").should eq("  name: my-app\n")
+      end
+    end
+
+    context "pass 2: whole line drop" do
+      it "drops lines containing 'helm'" do
+        input = <<-EOF
+          metadata:
+            annotations:
+              helm.sh/chart: cert-manager
+              other: value
+          EOF
+        subject.test_sanitize_rendered(input)
+          .should eq("metadata:\n  annotations:\n    other: value")
+      end
+
+      it "drops '# Source:' comments that helm emits between docs" do
+        input = "# Source: cert-manager/whatever.yaml\napiVersion: v1"
+        subject.test_sanitize_rendered(input)
+          .should eq("apiVersion: v1")
+      end
+    end
+
+    context "interaction between passes 1 and 2" do
+      it "applies purne before drop so a pruned line survives" do
+        subject.test_sanitize_rendered("  name: RELEASE-NAME-my-app\n")
+          .should eq("  name: my-app\n")
+      end
+
+      it "still drops a line when pass 2 tokens survive pruning" do
+        # pass 1 removes 'release-name-' leaving ' name: helm-app'
+        # pass 2 removes 'helm' and drops the whole line
+        subject.test_sanitize_rendered("  name: release-name-helm-app\nkeep: me\n")
+          .should eq("keep: me\n")
       end
     end
   end

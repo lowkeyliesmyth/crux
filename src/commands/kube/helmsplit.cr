@@ -50,6 +50,7 @@ module Crux::Commands
       values = options.get?("file").try(&.as_a) || [] of String
 
       rendered = render_chart(chart, version, values)
+      rendered = sanitize_rendered(rendered)
 
       processor = Ysplit::YsplitProcessor.new(outdir, prefix)
       result = processor.process(rendered, stdout, stderr)
@@ -98,6 +99,38 @@ module Crux::Commands
       else
         chart
       end
+    end
+
+    # Substrings to remove from YAML output to clean up release-name prefixes
+    YAML_PRUNE_SUBSTRINGS = [
+      "RELEASE-NAME-",
+      "release-name-",
+      # "release-name:",
+      # "RELEASE-NAME:",
+    ]
+
+    # Tokens which when matched will drop entire lines from YAML output to clean up lingering helm release-name prefixes
+    YAML_DROP_LINE_TOKENS = [
+      # "RELEASE-NAME",
+      "helm",
+      "Helm",
+      "# Source",
+      # "chart: ",
+      "release-name",
+    ]
+
+    # Applies two passes, in order:
+    #   1. Strip every YAML_PRUNE_SUBSTRINGS token from the body of YAML output
+    #   2. Drop any line containing any YAML_DROP_LINE_TOKENS token
+    #
+    # Returns sanitized YAML output
+    private def sanitize_rendered(rendered : String) : String
+      pruned = YAML_PRUNE_SUBSTRINGS.reduce(rendered) { |acc, substr| acc.gsub(substr, "") }
+      pruned.split('\n').reject do |line|
+        YAML_DROP_LINE_TOKENS.any? do |token|
+          line.includes?(token)
+        end
+      end.join('\n')
     end
   end
 end
