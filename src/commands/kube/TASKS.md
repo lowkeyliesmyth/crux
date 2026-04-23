@@ -6,7 +6,7 @@ Kubernetes-related utilities for manifest manipulation and resource management.
 
 Splits multi-document YAML manifests into separate files (one per K8s object).
 
-### Features to Implement
+### Future features to Implement
 
 - [ ] Allow outdir to be optional, default to CWD
 - [ ] Add support for cleaning out target directory of existing files
@@ -16,11 +16,18 @@ Splits multi-document YAML manifests into separate files (one per K8s object).
   - Either fail or silently ignore the command if not also paired with the 'clean' command
 - [ ] Sanitize user input for prefix option
 - [ ] Validate that user provided outdir arg is a valid filesystem path
-- [ ] Validate that user provided file is present
-- [ ] Implement local file logic (currently placeholder)
-- [ ] Complete remote URL processing logic (currently for debugging)
 
 ### Bugs to Fix
 
 - [ ] Fix option inheritance issue: help, debug, and no-color options not being inherited from Base.pre_run method
   - Likely some inheritance problem with registering the ysplit grandchild command in the child kube.cr instead of parent crux.cr
+
+## Subcommand: helmsplit
+
+Renders a Helm chart and splits the  resulting multi-doc output into separate files (one per K8s  object).
+
+### Future features to implement
+- [ ] validate user-submitted chart repo string against repositories.yaml repos list
+- [ ] Make the external helm call testable through an abstract collaborator refactor to helmsplit and helmsplit_spec
+
+### Bugs to fix

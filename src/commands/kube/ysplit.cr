@@ -122,7 +122,7 @@ module Crux::Commands
       add_argument "outdir", description: "path to save generated output files", required: true
 
       add_option 'f', "file", description: "the local path to a source YAML mega-manifest file", type: :single
-      add_option 'p', "prefix", description: "a custom prefix added to each output filename", type: :single
+      add_option 'p', "prefix", description: "custom prefix added to each output filename", type: :single
       add_option 'r', "remote", description: "the HTTP/S URL to fetch a remote YAML manifest from", type: :single
     end
 
@@ -142,12 +142,14 @@ module Crux::Commands
         error "Options are mutually exclusive:"
         error "\t#{"-f|--file".colorize.red} and #{"-r|--remote".colorize.red}"
         error "See #{"'crux kube ysplit --help'".colorize.blue.bold} for more help \n"
+        exit_program 1
       end
 
       unless has_file || has_remote
         error "Missing required option:"
         error "\t#{"-f|--file".colorize.red} or #{"-r|--remote".colorize.red}"
         error "See #{"'crux kube ysplit --help'".colorize.blue.bold} for more help \n"
+        exit_program 1
       end
     end
 

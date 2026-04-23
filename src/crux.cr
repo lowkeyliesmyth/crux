@@ -5,6 +5,7 @@ require "yaml"
 require "./commands/base"
 require "./commands/*"
 require "./commands/kube/*"
+
 Colorize.on_tty_only!
 
 module Crux
