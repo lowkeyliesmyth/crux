@@ -17,7 +17,8 @@ jobs:
           crystal: "1.20.0"
 
       - name: Install shards
-        run: shards install
+        # skip ameba postinstall which isn't takes time to compile and isn't used for specs anyways
+        run: shards install --skip-postinstall
 
       - name: Run specs
         run: crystal spec
