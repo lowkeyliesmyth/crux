@@ -14,9 +14,20 @@ jobs:
         with:
           crystal: "1.20.0"
 
+      - name: Cache shards and ameba binary
+        id: cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            lib
+            bin/ameba
+          # cache invalidates when any shard dependencies change or crystal version changes
+          key: ameba-${{ runner.os }}-crystal-1.20.0-${{ hashFiles('shard.lock') }}
+
       - name: Install shards
-        # skip ameba postinstall which isn't takes time to compile and isn't used for specs anyways
-        run: shards install --skip-postinstall
+        # trying to skip ameba postinstall (which takes time to compile and isn't used for specs anyways) just make this step fail.
+        # so just use a shard cache instead.
+        run: shards install
 
       - name: Run specs
         run: crystal spec
