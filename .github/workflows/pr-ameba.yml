@@ -1,0 +1,33 @@
+name: PR Ameba
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  ameba:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - uses: oprypin/install-crystal@d8ef131ecec0352ce0e39b81b0a6d95def58fe2f # v1
+        with:
+          crystal: "1.20.0"
+
+      - name: Cache shards and ameba binary
+        id: cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            lib
+            bin/ameba
+          # cache invalidates when any shard dependencies change or crystal version changes
+          key: ameba-${{ runner.os }}-crystal-1.20.0-${{ hashFiles('shard.lock') }}
+
+      - name: Install shards
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: shards install
+
+      - name: Run ameba
+        run: bin/ameba
