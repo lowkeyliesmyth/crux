@@ -19,8 +19,8 @@ jobs:
     name: Bump version and tag
     runs-on: ubuntu-latest
     outputs:
-      version: ${{ steps.cz.outputs.version }}
-      tag: ${{ steps.cz.outputs.version }}
+      version: ${{ steps.cz_stable.outputs.version || steps.cz_pre.outputs.version }}
+      tag: ${{ steps.cz_stable.outputs.version || steps.cz_pre.outputs.version }}
     steps:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
@@ -44,14 +44,25 @@ jobs:
           git config --global commit.gpgsign true
           git config --global user.signingkey ~/.ssh/signing_key
 
-      - name: Run commitizen bump
-        id: cz
+      - name: Run commitizen bump (stable)
+        id: cz_stable
+        if: inputs.prerelease == 'none'
         uses: commitizen-tools/commitizen-action@338bbd841b75aaee6bf5340e1fa12f6ab58ff9ff # 0.27.1
         with:
           github_token: ${{ secrets.RELEASE_PAT }}
           branch: main
-          prerelease: ${{ inputs.prerelease == 'none' && '' || inputs.prerelease }}
           gpg_sign: true
+          changelog_increment_filename: release_notes.md
+
+      - name: Run commitizen bump (prerelease)
+        id: cz_pre
+        if: inputs.prerelease != 'none'
+        uses: commitizen-tools/commitizen-action@338bbd841b75aaee6bf5340e1fa12f6ab58ff9ff # 0.27.1
+        with:
+          github_token: ${{ secrets.RELEASE_PAT }}
+          branch: main
+          gpg_sign: true
+          prerelease: ${{ inputs.prerelease }}
           changelog_increment_filename: release_notes.md
 
       - name: Upload release notes
@@ -100,8 +111,9 @@ jobs:
       - name: Package and checksum
         run: |
           BIN="crux-${{ needs.bump.outputs.version }}-${{ matrix.target_os }}-${{ matrix.target_arch }}"
-          cp dist/crux "dist/${BIN}"
-          cd dist && shasum -a 256 "${BIN}" > "${BIN}.sha256"
+          cd dist
+          tar -czf "${BIN}.tar.gz" crux
+          shasum -a 256 "${BIN}.tar.gz" > "${BIN}.tar.gz.sha256"
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
