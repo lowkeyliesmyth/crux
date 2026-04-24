@@ -7,6 +7,8 @@ update_changelog_on_bump = true
 major_version_zero = true
 breaking_change_exclamation_in_title = true
 gpg_sign = true
+changelog_pattern = "^(feat|fix|refactor|perf|docs|style|test|build|ci)"
+
 
 [tool.commitizen.change_type_map]
 feat     = "Features"
@@ -18,5 +20,4 @@ style    = "Styles"
 test     = "Tests"
 build    = "Build System"
 ci       = "CI"
-chore    = "Chores"
 revert   = "Reverts"
