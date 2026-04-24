@@ -1,3 +1,9 @@
+## 0.3.2 (2026-04-24)
+
+### CI
+
+- **GHA-release**: forcing a change to release new artifacts
+
 ## 0.3.1 (2026-04-23)
 
 ### Docs
