@@ -54,7 +54,9 @@ module Crux::Commands
 
       processor = Ysplit::YsplitProcessor.new(outdir, prefix)
       result = processor.process(rendered, stdout, stderr)
-      write_provenance(outdir, chart, version, values, prefix)
+
+      # Re-compute chart value so we don't leak the resolved path
+      write_provenance(outdir, arguments.get("chart").as_s, version, values, prefix)
 
       count_label = result[:written] == 1 ? "1 file" : "#{result[:written]} files"
       info "#{"Complete:".colorize.bold.green} #{count_label} written, #{result[:skipped]} skipped."
