@@ -1,27 +1,45 @@
 # crux
 
-TODO: Write a description here
+A small single binary Crystal CLI for everyday DevEx and operations workflows. 
+
+Crux is an **opinionated but transparent** single-binary CLI that consolidates utilities used in the day-to-day. It favors convention over configuration, and tells you exactly what it is doing whenever it touches your system.
+
+See `AGENTS.md` for the architecture and conventions for adding new commands.
 
 ## Installation
 
-TODO: Write installation instructions here
+Homebrew:
+
+```sh
+brew install lowkeyliesmyth/tap/crux
+```
+
+Or grab a binary for your platform from the [releases page](https://github.com/lowkeyliesmyth/crux/releases).
 
 ## Usage
 
-TODO: Write usage instructions here
+```sh
+crux --help
+crux kube
+crux kube helmsplit
+```
+
+Every command accepts `--help`, `--debug`, and `--no-color`.
 
 ## Development
 
-TODO: Write development instructions here
+Requires Crystal >= 1.16.3.
+
+```sh
+shards install
+crystal spec
+crystal build src/main.cr -o crux
+```
 
 ## Contributing
 
-1. Fork it (<https://github.com/your-github-user/crux/fork>)
-2. Create your feature branch (`git checkout -b my-new-feature`)
-3. Commit your changes (`git commit -am 'Add some feature'`)
-4. Push to the branch (`git push origin my-new-feature`)
-5. Create a new Pull Request
+Issues and PRs welcome. Please include test coverage and run `crystal spec` before opening a PR.
 
 ## Contributors
 
-- [lowkey](https://github.com/your-github-user) - creator and maintainer
+- [lowkey](https://github.com/lowkeyliesmyth) — creator and maintainer
