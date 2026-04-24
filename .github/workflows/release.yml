@@ -3,11 +3,6 @@ name: Release
 on:
   workflow_dispatch:
     inputs:
-      shame:
-        description: "Force a SHAME bump"
-        type: boolean
-        required: false
-        default: false
       prerelease:
         description: "Prerelease type (none = stable release)"
         type: choice
@@ -18,6 +13,11 @@ on:
           - alpha
           - beta
           - rc
+      shame:
+        description: "Force a SHAME bump"
+        type: boolean
+        required: false
+        default: false
       dry_run:
         description: "Dry run (no push, no release)"
         type: boolean
