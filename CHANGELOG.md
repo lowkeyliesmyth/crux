@@ -1,3 +1,13 @@
+## 0.3.1 (2026-04-23)
+
+### Docs
+
+- **readme**: publish an actual readme
+
+### CI
+
+- **GHA**: fix release action git attribution, enable shame releases (#9)
+
 ## 0.3.0 (2026-04-24)
 
 ### Feat
