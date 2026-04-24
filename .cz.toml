@@ -1,5 +1,5 @@
 [tool.commitizen]
-name = "cz_conventional_commits"
+name = "cz_customize"
 tag_format = "$version"
 version_scheme = "semver"
 version = "0.2.0"
@@ -7,10 +7,29 @@ update_changelog_on_bump = true
 major_version_zero = true
 breaking_change_exclamation_in_title = true
 gpg_sign = true
+
+[tool.commitizen.customize]
 changelog_pattern = "^(feat|fix|refactor|perf|docs|style|test|build|ci)"
+commit_parser = "^((?P<change_type>feat|fix|refactor|perf|docs|style|test|build|ci|BREAKING CHANGE)(?:\\((?P<scope>[^()\\r\\n]*)\\)|\\()?(?P<breaking>!)?|\\w+!):\\s(?P<message>.*)?"
+change_type_order = ["BREAKING CHANGE", "Feat", "Bug Fixes", "Performance", "Refactor", "Docs", "Style", "Tests", "Build System", "CI"]
 
+schema = """<type>(<scope>): <subject>
+<BLANK LINE>
+<body>
+<BLANK LINE>
+(BREAKING CHANGE: )<footer>"""
 
-[tool.commitizen.change_type_map]
+schema_pattern = '(?s)(build|bump|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(\(\S+\))?!?: ([^\n\r]+)((\n\n.*)|(\s*))?$'
+
+example = """fix: correct minor typos in code
+
+see the issue for details on the typos fixed
+
+closes issue #12"""
+
+message_template = "{{prefix}}{% if scope %}({{scope}}){% endif %}{% if is_breaking_change %}!{% endif %}: {{subject}}{% if body %}\n\n{{body}}{% endif %}{% if is_breaking_change %}\n\nBREAKING CHANGE: {{footer}}{% elif footer %}\n\n{{footer}}{% endif %}"
+
+[tool.commitizen.customize.change_type_map]
 feat     = "Feat"
 fix      = "Bug Fixes"
 refactor = "Refactor"
@@ -20,3 +39,45 @@ style    = "Style"
 test     = "Tests"
 build    = "Build System"
 ci       = "CI"
+
+[[tool.commitizen.customize.questions]]
+type = "list"
+name = "prefix"
+message = "Select the type of change you are committing"
+choices = [
+  {value = "fix",      name = "fix: A bug fix. Correlates with PATCH in SemVer",                                                                         key = "x"},
+  {value = "feat",     name = "feat: A new feature. Correlates with MINOR in SemVer",                                                                    key = "f"},
+  {value = "docs",     name = "docs: Documentation only changes",                                                                                        key = "d"},
+  {value = "style",    name = "style: Changes that do not affect the meaning of the code (white-space, formatting, missing semi-colons, etc)",           key = "s"},
+  {value = "refactor", name = "refactor: A code change that neither fixes a bug nor adds a feature",                                                     key = "r"},
+  {value = "perf",     name = "perf: A code change that improves performance",                                                                           key = "p"},
+  {value = "test",     name = "test: Adding missing or correcting existing tests",                                                                       key = "t"},
+  {value = "build",    name = "build: Changes that affect the build system or external dependencies (example scopes: pip, docker, npm)",                 key = "b"},
+  {value = "ci",       name = "ci: Changes to CI configuration files and scripts (example scopes: GitLabCI)",                                            key = "c"},
+]
+
+[[tool.commitizen.customize.questions]]
+type = "input"
+name = "scope"
+message = "What is the scope of this change? (class or file name): (press [enter] to skip)\n"
+
+[[tool.commitizen.customize.questions]]
+type = "input"
+name = "subject"
+message = "Write a short and imperative summary of the code changes: (lower case and no period)\n"
+
+[[tool.commitizen.customize.questions]]
+type = "input"
+name = "body"
+message = "Provide additional contextual information about the code changes: (press [enter] to skip)\n"
+
+[[tool.commitizen.customize.questions]]
+type = "confirm"
+name = "is_breaking_change"
+message = "Is this a BREAKING CHANGE? Correlates with MAJOR in SemVer"
+default = false
+
+[[tool.commitizen.customize.questions]]
+type = "input"
+name = "footer"
+message = "Footer. Information about Breaking Changes and reference issues that this commit closes: (press [enter] to skip)\n"
