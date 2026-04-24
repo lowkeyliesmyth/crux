@@ -7,6 +7,9 @@ update_changelog_on_bump = true
 major_version_zero = true
 breaking_change_exclamation_in_title = true
 gpg_sign = true
+version_files = [
+    "shard.yml:^version:"
+]
 
 [tool.commitizen.customize]
 changelog_pattern = "^(feat|fix|refactor|perf|docs|style|test|build|ci)"
