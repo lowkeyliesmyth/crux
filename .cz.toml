@@ -5,3 +5,18 @@ version_scheme = "semver"
 version = "0.2.0"
 update_changelog_on_bump = true
 major_version_zero = true
+breaking_change_exclamation_in_title = true
+gpg_sign = true
+
+[tool.commitizen.change_type_map]
+feat     = "Features"
+fix      = "Bug Fixes"
+refactor = "Refactoring"
+perf     = "Performance Improvements"
+docs     = "Documentation"
+style    = "Styles"
+test     = "Tests"
+build    = "Build System"
+ci       = "CI"
+chore    = "Chores"
+revert   = "Reverts"
