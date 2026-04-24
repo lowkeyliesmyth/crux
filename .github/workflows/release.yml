@@ -127,7 +127,27 @@ jobs:
       - name: Build binary
         run: |
           mkdir -p dist
-          crystal build src/main.cr --release -o dist/crux
+          if [ "${{ matrix.target_os }}" = "darwin" ]; then
+            # Build against openssl3 specifically
+            SSL_PREFIX="$(brew --prefix openssl@3)"
+            # Reason: macOS ld prefers .dylib over .a when both exist in the same -L dir.
+            # Removing the dylibs forces it to link libssl.a + libcrypto.a from the same prefix.
+            # The runner is ephemeral so no cleanup needed.
+            test -f "${SSL_PREFIX}/lib/libssl.a"    || { echo "libssl.a missing"; exit 1; }
+            test -f "${SSL_PREFIX}/lib/libcrypto.a" || { echo "libcrypto.a missing"; exit 1; }
+            rm -f "${SSL_PREFIX}/lib/libssl"*.dylib "${SSL_PREFIX}/lib/libcrypto"*.dylib
+
+            rm -f "${SSL_PREFIX}/lib/libssl.dylib" "${SSL_PREFIX}/lib/libssl.3.dylib"
+            #rm -f "${SSL_PREFIX}/lib/libcrypto.dylib" "${SSL_PREFIX}/lib/libcrypto.3.dylib"
+            export PKG_CONFIG_PATH="${SSL_PREFIX}/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
+            crystal build src/main.cr --release \
+              --link-flags "-L${SSL_PREFIX}/lib" \
+              -o dist/crux
+          else
+            crystal build src/main.cr --release -o dist/crux
+          fi
+          echo "Linked dylibs:"
+          otool -L dist/crux 2>/dev/null || ldd dist/crux
 
       - name: Package and checksum
         run: |
