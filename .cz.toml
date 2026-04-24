@@ -11,13 +11,12 @@ changelog_pattern = "^(feat|fix|refactor|perf|docs|style|test|build|ci)"
 
 
 [tool.commitizen.change_type_map]
-feat     = "Features"
+feat     = "Feat"
 fix      = "Bug Fixes"
-refactor = "Refactoring"
-perf     = "Performance Improvements"
-docs     = "Documentation"
-style    = "Styles"
+refactor = "Refactor"
+perf     = "Performance"
+docs     = "Docs"
+style    = "Style"
 test     = "Tests"
 build    = "Build System"
 ci       = "CI"
-revert   = "Reverts"
