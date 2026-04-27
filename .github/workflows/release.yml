@@ -235,6 +235,7 @@ jobs:
             license "MIT"
 
             on_macos do
+              depends_on arch: :arm64
               on_arm do
                 url "https://github.com/lowkeyliesmyth/crux/releases/download/#{version}/crux-#{version}-darwin-arm64.tar.gz"
                 sha256 "${DARWIN_ARM64}"
