@@ -266,11 +266,19 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.TAP_RELEASE }}
           VERSION: ${{ needs.bump.outputs.version }}
+          SIGNING_KEY: ${{ secrets.SIGNING_SSH_KEY }}
         working-directory: tap
         run: |
           BRANCH="bump-crux-${VERSION}"
-          git config user.name  "crux-release"
-          git config user.email "lowkey@kaffeinlabs.com"
+          mkdir -p ~/.ssh
+          printf '%s\n' "$SIGNING_KEY" > ~/.ssh/signing_key
+          chmod 600 ~/.ssh/signing_key
+          git config --global user.name "crux-release"
+          git config --global user.email "lowkey@kaffeinlabs.com"
+          git config --global gpg.format ssh
+          git config --global tag.gpgsign true
+          git config --global commit.gpgsign true
+          git config --global user.signingkey ~/.ssh/signing_key
           git checkout -b "${BRANCH}"
           git add Formula/crux.rb
           git commit -m "chore(crux): bump to ${VERSION}"
