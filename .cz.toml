@@ -2,7 +2,7 @@
 name = "cz_customize"
 tag_format = "$version"
 version_scheme = "semver"
-version = "0.3.3-a0"
+version = "0.3.3"
 update_changelog_on_bump = true
 major_version_zero = true
 breaking_change_exclamation_in_title = true

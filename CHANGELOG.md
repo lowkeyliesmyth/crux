@@ -1,3 +1,17 @@
+## 0.3.3 (2026-04-27)
+
+### Feat
+
+- **ysplit,helmsplit**: store command source provenance in rendered output (#11)
+
+### Build System
+
+- **GHA-release**: update release workflow to explicitly target openssl3 (#10)
+
+### CI
+
+- **release**: link up ci so crux releases trigger homebrew releases too
+
 ## 0.3.3-a0 (2026-04-24)
 
 ### Build System
