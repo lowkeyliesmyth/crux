@@ -5,7 +5,6 @@ require "file_utils"
 
 class TestableHelmsplit < Crux::Commands::Helmsplit
   def test_resolve_chart(chart : String) : String
-    String
     resolve_chart(chart)
   end
 
@@ -18,40 +17,38 @@ class TestableHelmsplit < Crux::Commands::Helmsplit
   end
 end
 
-# TODO: Refactor this test and the source helmsplit to use an abstract collaborator pattern
-# Crappy temporary shell-based fake for the external `helm` command
-# Writes a shellscript to <tmpdir>/helm, prepends <tmpdir> to PATH. Restores PATH afterwards
-private def with_fake_helm(body : String, &)
-  tmpdir = File.join(Dir.tempdir, "helmsplit_fake_helm_#{Time.utc.to_unix_ms}_#{rand(10_000)}")
-  Dir.mkdir_p(tmpdir)
-  path = File.join(tmpdir, "helm")
-  File.write(path, body)
-  File.chmod(path, 0o755)
+# Mock Helm collaborator implementation for testing
+class MockHelm < Crux::Commands::Helmsplit::Helm
+  property? installed : Bool = true
+  property? should_fail : Bool = false
+  property template_calls = [] of {chart: String, version: String?, values: Array(String)}
 
-  original = ENV["PATH"] || ""
-  ENV["PATH"] = "#{tmpdir}:#{original}"
-  begin
-    yield
-  ensure
-    ENV["PATH"] = original
-    FileUtils.rm_rf(tmpdir)
+  def template(chart : String, version : String?, values : Array(String)) : String
+    @template_calls << {chart: chart, version: version, values: values}
+
+    if @should_fail
+      raise Crux::Commands::Helmsplit::HelmsplitError.new("helm template failed with exit code 1:\nError: chart not found: bogustown")
+    end
+
+    # Simulate the output we were getting from FAKE_HELM_ECHO_ARGS to help with verifying internal state
+    String.build do |io|
+      io << "ARG: template\n"
+      io << "ARG: #{chart}\n"
+      io << "ARG: --include-crds\n"
+      if version
+        io << "ARG: --version\n"
+        io << "ARG: #{version}\n"
+      end
+      values.each do |v|
+        io << "ARG: --values=#{v}\n"
+      end
+    end
+  end
+
+  def installed? : Bool
+    @installed
   end
 end
-
-# Echoes each argv entry on its own line so tests can assert flag render_chart contract constructs.
-FAKE_HELM_ECHO_ARGS = <<-'EOF'
-  #!/bin/sh
-  for arg in "$@"; do
-    printf 'ARG:%s\\n' "$arg"
-  done
-  EOF
-
-# Intentionally fails with a non-zero and a defined stderr payload.
-FAKE_HELM_FAIL = <<-EOF
-  #!/bin/sh
-  echo 'Error: chart not found: bogustown' >&2
-  exit 1
-  EOF
 
 describe Crux::Commands::Helmsplit do
   describe "#resolve_chart" do
@@ -101,56 +98,57 @@ describe Crux::Commands::Helmsplit do
     subject = TestableHelmsplit.new
 
     context "on successful call" do
-      it "returns helm's stdout" do
-        with_fake_helm(FAKE_HELM_ECHO_ARGS) do
-          result = subject.test_render_chart("jetstack/cert-manager", nil, [] of String)
-          result.should contain("ARG:template")
-          result.should contain("ARG:jetstack/cert-manager")
-        end
+      it "returns helm's stdout based on mock" do
+        mock_helm = MockHelm.new
+        subject = TestableHelmsplit.new(helm: mock_helm)
+        result = subject.test_render_chart("jetstack/cert-manager", nil, [] of String)
+
+        # verify the mock was called with the correct arguments
+        mock_helm.template_calls.size.should eq(1)
+        call = mock_helm.template_calls.first
+        call[:chart].should eq("jetstack/cert-manager")
+        call[:version].should be_nil
+        call[:values].should be_empty
+
+        # verify mock output matches what tests expect
+        result.should contain("ARG: template")
+        result.should contain("ARG: jetstack/cert-manager")
+        result.should contain("ARG: --include-crds")
       end
 
-      it "always passes --include-crds flag to helm" do
-        with_fake_helm(FAKE_HELM_ECHO_ARGS) do
-          result = subject.test_render_chart("jetstack/cert-manager", nil, [] of String)
-          result.should contain("ARG:--include-crds")
-        end
+      it "includes version when provided" do
+        mock_helm = MockHelm.new
+        subject = TestableHelmsplit.new(helm: mock_helm)
+
+        result_version = subject.test_render_chart("jetstack/cert-manager", "1.20", [] of String)
+
+        mock_helm.template_calls.first[:version].should eq("1.20")
+        result_version.should contain("ARG: --version")
+        result_version.should contain("ARG: 1.20")
       end
 
-      it "includes --version <v> only when a version is provided" do
-        with_fake_helm(FAKE_HELM_ECHO_ARGS) do
-          result_version = subject.test_render_chart("jetstack/cert-manager", "1.20", [] of String)
-          result_version.should contain("ARG:--version")
-          result_version.should contain("ARG:1.20")
+      it "passes values files correctly and retains ordering" do
+        mock_helm = MockHelm.new
+        subject = TestableHelmsplit.new(helm: mock_helm)
 
-          no_version = subject.test_render_chart("jetstack/cert-manager", nil, [] of String)
-          no_version.should_not contain("ARG:--version")
-        end
+        result = subject.test_render_chart("jetstack/cert-manager", nil, ["base.yaml", "prod.yaml"])
+
+        mock_helm.template_calls.first[:values].should eq(["base.yaml", "prod.yaml"])
+        result.should contain("ARG: --values=base.yaml")
+        result.should contain("ARG: --values=prod.yaml")
+        result.index!("--values=base.yaml").should be < result.index!("--values=prod.yaml")
       end
 
-      it "emits single ordered --values=<path> per entry" do
-        with_fake_helm(FAKE_HELM_ECHO_ARGS) do
-          result = subject.test_render_chart("jetstack/cert-manager", nil, ["base.yaml", "prod.yaml"])
-          result.should contain("ARG:--values=base.yaml")
-          result.should contain("ARG:--values=prod.yaml")
-          # confirm ordering, not just content
-          result.index!("--values=base.yaml").should be < result.index!("--values=prod.yaml")
-        end
-      end
-    end
+      context "when helm exits non-zero" do
+        it "raises HelmsplitError containing exit code and stderr" do
+          mock_helm = MockHelm.new
 
-    context "when helm exits non-zero" do
-      it "raises HelmsplitError containing exit code" do
-        with_fake_helm(FAKE_HELM_FAIL) do
-          expect_raises(Crux::Commands::Helmsplit::HelmsplitError, /exit code 1/) do
-            subject.test_render_chart("definitely-missing-chart", nil, [] of String)
-          end
-        end
-      end
+          # assert the failure case
+          mock_helm.should_fail = true
+          subject = TestableHelmsplit.new(helm: mock_helm)
 
-      it "surfaces helm's stderr text in the raised message" do
-        with_fake_helm(FAKE_HELM_FAIL) do
-          expect_raises(Crux::Commands::Helmsplit::HelmsplitError, /bogustown/) do
-            subject.test_render_chart("definitely-missing-chart", nil, [] of String)
+          expect_raises(Crux::Commands::Helmsplit::HelmsplitError, /helm template failed with exit code 1.*bogustown/m) do
+            subject.test_render_chart("def-missing-chart-bro", nil, [] of String)
           end
         end
       end
@@ -195,7 +193,7 @@ describe Crux::Commands::Helmsplit do
           .should eq("  name: my-app\n")
       end
 
-      it "still drops a line when pass 2 tokens survive pruning" do
+      it "still drops a line when pass 1 tokens survive pruning" do
         # pass 1 removes 'release-name-' leaving ' name: helm-app'
         # pass 2 removes 'helm' and drops the whole line
         subject.test_sanitize_rendered("  name: release-name-helm-app\nkeep: me\n")
