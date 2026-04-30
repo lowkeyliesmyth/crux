@@ -3,6 +3,44 @@ module Crux::Commands
     class HelmsplitError < Exception
     end
 
+    # Abstract collaborator for Helm operations.
+    # Provides a common interface for Helm operations to be implemented (and tested) by concrete implementations.
+    abstract class Helm
+      abstract def template(chart : String, version : String?, values : Array(String)) : String
+      abstract def installed? : Bool
+    end
+
+    property helm : Helm
+
+    # Concrete helm implementation that calls out to the locally installed Helm CLI
+    class RealHelm < Helm
+      # Renders a helm chart via `helm template` and returns the rendered manifest as a String.
+      # Raises HelmsplitError on non-zero exit.
+      def template(chart : String, version : String?, values : Array(String)) : String
+        args = ["template", chart, "--include-crds"]
+        args.concat(["--version", version]) if version
+        values.each { |v| args << "--values=#{v}" }
+
+        stdout_io = IO::Memory.new
+        stderr_io = IO::Memory.new
+        status = Process.run("helm", args, output: stdout_io, error: stderr_io)
+        unless status.success?
+          raise HelmsplitError.new("helm template failed with exit code #{status.exit_code}:\n#{stderr_io.to_s.strip}")
+        end
+        stdout_io.to_s
+      end
+
+      # Returns true if the helm executable is installed and available on system PATH.
+      def installed? : Bool
+        !!Process.find_executable("helm")
+      end
+    end
+
+    def initialize(@helm : Helm = RealHelm.new)
+      # retain initialize logic from parent class base.cr
+      super()
+    end
+
     def setup : Nil
       @name = "helmsplit"
       @summary = "render a helm chart and split YAML manifests into one file per object"
@@ -35,7 +73,7 @@ module Crux::Commands
       Colorize.enabled = false if options.has? "no-color"
 
       # fail early if helm is not installed
-      unless Process.find_executable("helm")
+      unless @helm.installed?
         error "'helm' executable not found on PATH"
         error "Install helm and try again"
         exit_program 1
@@ -69,20 +107,8 @@ module Crux::Commands
     def post_run(arguments : Cling::Arguments, options : Cling::Options) : Nil
     end
 
-    # Renders a helm chart via `helm template` and returns the rendered manifest as a String.
-    # Raises HelmsplitError on non-zero exit.
     private def render_chart(chart : String, version : String?, values : Array(String)) : String
-      args = ["template", chart, "--include-crds"]
-      args.concat(["--version", version]) if version
-      values.each { |v| args << "--values=#{v}" }
-
-      stdout_io = IO::Memory.new
-      stderr_io = IO::Memory.new
-      status = Process.run("helm", args, output: stdout_io, error: stderr_io)
-      unless status.success?
-        raise HelmsplitError.new("helm template failed with exit code #{status.exit_code}:\n#{stderr_io.to_s.strip}")
-      end
-      stdout_io.to_s
+      @helm.template(chart, version, values)
     end
 
     # Returns the chart reference to pass to helm as either an expanded local path or the original 'repo/chart' string.
@@ -137,7 +163,6 @@ module Crux::Commands
     end
 
     private def write_provenance(outdir : String, chart : String, version : String?, values : Array(String), prefix : String?)
-      # parts = ["crux kube helmsplit <OUTDIR>", chart]
       parts = ["crux kube helmsplit", outdir, chart]
       parts << "-v #{version}" if version
       values.each do |v|
