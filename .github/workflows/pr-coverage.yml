@@ -1,6 +1,14 @@
 name: PR Coverage
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - "src/**"
+      - "spec/**"
+      - "shard.yml"
+      - "shard.lock"
   pull_request:
     branches:
       - main
