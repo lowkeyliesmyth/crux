@@ -1,0 +1,64 @@
+name: PR Coverage
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "src/**"
+      - "spec/**"
+      - "shard.yml"
+      - "shard.lock"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "src/**"
+      - "spec/**"
+      - "shard.yml"
+      - "shard.lock"
+
+jobs:
+  coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - uses: oprypin/install-crystal@d8ef131ecec0352ce0e39b81b0a6d95def58fe2f # v1
+        with:
+          crystal: "1.20.0"
+
+      - name: Install kcov
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y kcov
+
+      - name: Cache shards
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: lib
+          key: shards-${{ runner.os }}-crystal-1.20.0-${{ hashFiles('shard.lock') }}
+
+      - name: Install shards
+        run: shards install
+
+      # See reference: https://crystal-lang.org/reference/1.20/guides/testing/code_coverage.html
+      - name: Build spec aggregator
+        run: |
+          echo 'require "./spec/**"' > ./all_specs.cr
+          mkdir -p ./bin
+          crystal build ./all_specs.cr -o ./bin/all_specs
+
+      - name: Run kcov
+        run: kcov --clean --include-path="./src" ./coverage ./bin/all_specs --order=random
+
+      - name: Generate unreachable-code report
+        run: crystal tool unreachable --format=codecov ./all_specs.cr > ./coverage/unreachable.codecov.json
+
+      - name: Upload to Codecov
+        uses: codecov/codecov-action@75cd11691c0faa626561e295848008c8a7dddffe #v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: "**/cov.xml,**/unreachable.codecov.json"
+          fail_ci_if_error: false
+          disable_search: false
