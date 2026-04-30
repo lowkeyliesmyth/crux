@@ -1,5 +1,7 @@
+/coverage/
 /docs/
 /lib/
 /bin/
 /.shards/
+/all_specs.cr
 *.dwarf
