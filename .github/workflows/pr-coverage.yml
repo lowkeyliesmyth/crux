@@ -35,9 +35,17 @@ jobs:
           sudo apt-get update
           sudo apt-get install binutils-dev build-essential cmake libssl-dev libcurl4-openssl-dev libelf-dev libstdc++-12-dev zlib1g-dev libdw-dev libiberty-dev
 
+      - name: Cache kcov binary
+        id: cache-kcov
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: /usr/local/bin/kcov
+          key: kcov-v43-${{ runner.os }}-${{ runner.arch }}
+
       - name: Build and install kcov
         env:
           KCOV_VERSION: v43
+        if: steps.cache-kcov.outputs.cache-hit != 'true'
         run: |
           git clone --depth=1 --branch "$KCOV_VERSION" \
             https://github.com/SimonKagstrom/kcov.git /tmp/kcov
@@ -63,7 +71,7 @@ jobs:
           mkdir -p ./bin
           crystal build ./all_specs.cr -o ./bin/all_specs
 
-      - name: Run kcov
+      - name: Run kcov over all specs
         run: kcov --clean --include-path="./src" ./coverage ./bin/all_specs --order=random
 
       - name: Generate unreachable-code report
