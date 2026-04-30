@@ -19,8 +19,8 @@ end
 
 # Mock Helm collaborator implementation for testing
 class MockHelm < Crux::Commands::Helmsplit::Helm
-  property installed : Bool = true
-  property should_fail : Bool = false
+  property? installed : Bool = true
+  property? should_fail : Bool = false
   property template_calls = [] of {chart: String, version: String?, values: Array(String)}
 
   def template(chart : String, version : String?, values : Array(String)) : String
@@ -193,7 +193,7 @@ describe Crux::Commands::Helmsplit do
           .should eq("  name: my-app\n")
       end
 
-      it "still drops a line when pass 2 tokens survive pruning" do
+      it "still drops a line when pass 1 tokens survive pruning" do
         # pass 1 removes 'release-name-' leaving ' name: helm-app'
         # pass 2 removes 'helm' and drops the whole line
         subject.test_sanitize_rendered("  name: release-name-helm-app\nkeep: me\n")
