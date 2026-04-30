@@ -29,5 +29,6 @@ Renders a Helm chart and splits the  resulting multi-doc output into separate fi
 ### Future features to implement
 - [ ] validate user-submitted chart repo string against repositories.yaml repos list
 - [ ] Make the external helm call testable through an abstract collaborator refactor to helmsplit and helmsplit_spec
+- [ ] Enable support for retrieving oci-sourced helm charts (eg `oci://quay.io/jetstack/charts/cert-manager:v1.20.2`)
 
 ### Bugs to fix
