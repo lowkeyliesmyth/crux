@@ -17,7 +17,7 @@ module Crux::Commands
       # Renders a helm chart via `helm template` and returns the rendered manifest as a String.
       # Raises HelmsplitError on non-zero exit.
       def template(chart : String, version : String?, values : Array(String)) : String
-        args = ["template", chart, "--include-crds"]
+        args = ["template", chart, "--include-crds", "--namespace", "default"]
         args.concat(["--version", version]) if version
         values.each { |v| args << "--values=#{v}" }
 
