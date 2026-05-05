@@ -1,3 +1,20 @@
+## 0.3.4 (2026-05-05)
+
+### Bug Fixes
+
+- **helmsplit**: explicitly set namespace in helm rendering (#15)
+
+### Refactor
+
+- **helmsplit**: improve testing with decoupled helm abstract interface (#14)
+
+### CI
+
+- **GHA-coverage**: enable local and automated code coverage reports on prs (#13)
+- **release**: link up ci so crux releases trigger homebrew releases too (#12)
+- **release**: link up ci so crux releases trigger homebrew releases too
+- **GHA-release**: brew releases on macos are arm64 only
+
 ## 0.3.3 (2026-04-27)
 
 ### Feat
