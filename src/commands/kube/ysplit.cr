@@ -221,8 +221,7 @@ module Crux::Commands
     # Validate that the user-provided URL is an HTTP endpoint and likely contains YAML
     # Returns string if valid, raises YsplitError if invalid.
     def validate_yaml_url(url : URI) : String
-      valid_scheme : Regex = /^https?$/
-      if url.scheme.try { |scheme| valid_scheme.matches?(scheme) } &&
+      if url.scheme == "https" &&
          url.host &&
          (["yaml", "yml"].includes?(url.path.split(".").last.downcase))
         url.to_s
