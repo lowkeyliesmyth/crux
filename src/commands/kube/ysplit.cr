@@ -1,5 +1,6 @@
 require "file_utils"
 require "http/client"
+require "socket"
 require "uri"
 require "yaml"
 
@@ -230,6 +231,33 @@ module Crux::Commands
       end
     end
 
+    # Resolve remote `host` to IP address to prevent SSRF or DNS rebinding.
+    #
+    # Written as a seam so tests can mock host resolution without calling out.
+    protected def resolve_host(host : String) : Array(Socket::IPAddress)
+      Socket::Addrinfo.resolve(host, "http", type: Socket::Type::STREAM).map(&.ip_address)
+    end
+
+    # Checks if IPs are on an exclusion list (loopback, link-local, unspecified) that shouldn't be reached.
+    #
+    # Returns true if the IP is on the exclusion list, otherwise false.
+    protected def disallowed_ip?(ip : Socket::IPAddress) : Bool
+      ip.loopback? || ip.link_local? || ip.unspecified?
+    end
+
+    # Resolves the URL host to IP and rejects addresses that are on the exclusion list.
+    protected def validate_url_dest(url : URI) : Nil
+      host = url.host
+      raise YsplitError.new("'#{url}' has no host defined") unless host
+
+      ips = resolve_host(host)
+      raise YsplitError.new("Could not resolve host: '#{host}'") if ips.empty?
+
+      if disallowed = ips.find { |ip| disallowed_ip?(ip) }
+        raise YsplitError.new("#{host} resolves to disallowed address (loopback, link-local, or unspecified): #{disallowed}")
+      end
+    end
+
     # Reads YAML content from a local file path (supports ~/ homedir expansion)
     # Returns the file contents.
     private def read_local_file(path : String) : String
@@ -252,6 +280,13 @@ module Crux::Commands
     # Required for retrieval from Github Releases, which use redirects.
     # Guard against processing too many redirects causing infinite loops.
     MAX_REDIRECTS = 5
+
+    # HTTP timeouts to prevent hanging on slow or unreachable servers.
+    HTTP_CONN_TIMEOUT = 10.seconds
+    HTTP_READ_TIMEOUT = 30.seconds
+
+    # Ceiling on response body shown during debugging
+    MAX_DEBUG_BODY_BYTES = 256
 
     # Fetches YAML content from a remote HTTP or HTTPS URL.
     # Follows up to MAX_REDIRECTS redirects (3xx in header).
