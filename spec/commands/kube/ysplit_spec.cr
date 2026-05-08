@@ -46,6 +46,41 @@ NULL_NAME_DOC = <<-YAML
     name:
   YAML
 
+TRAVERSAL_NAME_DOC = <<-YAML
+  apiVersion: v1
+  kind: ConfigMap
+  metadata:
+    name: ../../../tmp/pwned
+  YAML
+
+SLASH_NAME_DOC = <<-YAML
+  apiVersion: v1
+  kind: ConfigMap
+  metadata:
+    name: foo/bar
+  YAML
+
+BACKSLASH_NAME_DOC = <<-YAML
+  apiVersion: v1
+  kind: ConfigMap
+  metadata:
+    name: "foo\\\\bar"
+  YAML
+
+NUL_NAME_DOC = <<-YAML
+  apiVersion: v1
+  kind: ConfigMap
+  metadata:
+    name: "foo\\u0000bar"
+  YAML
+
+LEADING_DOT_NAME_DOC = <<-YAML
+  apiVersion: v1
+  kind: ConfigMap
+  metadata:
+    name: .hidden
+  YAML
+
 # One valid doc, one malformed doc
 MIXED_DOC = <<-YAML
   apiVersion: apps/v1
@@ -389,6 +424,73 @@ describe Crux::Commands::Ysplit::YsplitProcessor do
         expect_raises(YAML::ParseException) do
           processor.process(MALFORMED_YAML, out_io, err_io)
         end
+      end
+    end
+
+    context "with unsafe metadata.name" do
+      it "skips a doc whose name contains '..' and writes nothing" do
+        processor = Crux::Commands::Ysplit::YsplitProcessor.new(temp_dir)
+        result = processor.process(TRAVERSAL_NAME_DOC, out_io, err_io)
+        result[:written].should eq(0)
+        result[:skipped].should eq(1)
+        err_io.to_s.should contain("invalid 'metadata.name'")
+        File.exists?(Path.new("/tmp", "pwned-configmap.yaml")).should be_false
+      end
+
+      it "skips a doc whose name contains '/'" do
+        processor = Crux::Commands::Ysplit::YsplitProcessor.new(temp_dir)
+        result = processor.process(SLASH_NAME_DOC, out_io, err_io)
+        result[:written].should eq(0)
+        result[:skipped].should eq(1)
+        err_io.to_s.should contain("invalid 'metadata.name'")
+      end
+
+      it "skips a doc whose name contains '\\'" do
+        processor = Crux::Commands::Ysplit::YsplitProcessor.new(temp_dir)
+        result = processor.process(BACKSLASH_NAME_DOC, out_io, err_io)
+        result[:written].should eq(0)
+        result[:skipped].should eq(1)
+        err_io.to_s.should contain("invalid 'metadata.name'")
+      end
+
+      it "skips a doc whose name contains  NUL byte" do
+        processor = Crux::Commands::Ysplit::YsplitProcessor.new(temp_dir)
+        result = processor.process(NUL_NAME_DOC, out_io, err_io)
+        result[:written].should eq(0)
+        result[:skipped].should eq(1)
+        err_io.to_s.should contain("invalid 'metadata.name'")
+      end
+
+      it "skips a doc whose name has a leading dot" do
+        processor = Crux::Commands::Ysplit::YsplitProcessor.new(temp_dir)
+        result = processor.process(LEADING_DOT_NAME_DOC, out_io, err_io)
+        result[:written].should eq(0)
+        result[:skipped].should eq(1)
+        err_io.to_s.should contain("invalid 'metadata.name'")
+      end
+
+      it "skips a doc whose name exceeds 253 chars" do
+        overlong = "a" * (Crux::Commands::Ysplit::YsplitProcessor::RFC_1123_MAX_LENGTH + 1)
+        yaml = "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: #{overlong}\n"
+        processor = Crux::Commands::Ysplit::YsplitProcessor.new(temp_dir)
+        result = processor.process(yaml, out_io, err_io)
+        result[:written].should eq(0)
+        result[:skipped].should eq(1)
+        err_io.to_s.should contain("invalid 'metadata.name'")
+      end
+
+      it "still accepts RFC-1123 compliant names" do
+        yaml = <<-YAML
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: my.app-1.example.net.com
+        YAML
+        processor = Crux::Commands::Ysplit::YsplitProcessor.new(temp_dir)
+        result = processor.process(yaml, out_io, err_io)
+        result[:written].should eq(1)
+        result[:skipped].should eq(0)
+        err_io.to_s.should be_empty
       end
     end
 
