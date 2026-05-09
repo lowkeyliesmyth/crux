@@ -97,9 +97,20 @@ MALFORMED_YAML = <<-YAML
   key: [unclosed bracket
   YAML
 
-# Created a thin test subclass to expose protected methods and enable testing via spec below
-# Why? `protected` methods cannot be called directly from outside the class, so we need a test subclass to expose them and make them testable in specs.
+# Created a thin test subclass to expose protected methods and enable testing via spec below.
+# Why? `protected` methods cannot be called directly from outside the class, so we need a test subclass to expose and make them testable in specs.
+# `stubbed_ips` resolves to a public address so most tests keep passing without additional changes.
 class TestableYsplit < Crux::Commands::Ysplit
+  property stubbed_ips : Array(Socket::IPAddress) = [Socket::IPAddress.new("99.184.216.34", 80)]
+
+  protected def resolve_host(host : String) : Array(Socket::IPAddress)
+    stubbed_ips
+  end
+
+  def test_disallowed_ip?(ip : Socket::IPAddress) : Bool
+    disallowed_ip?(ip)
+  end
+
   def test_fetch_remote(url : URI, redirects_remaining : Int32 = MAX_REDIRECTS) : String
     fetch_remote(url, redirects_remaining)
   end
@@ -110,6 +121,10 @@ describe TestableYsplit do
     # Still use the `subject` defined in the context
     # Otherwise recreate it if necessary
     subject = TestableYsplit.new
+
+    Spec.before_each do
+      subject.stubbed_ips = [Socket::IPAddress.new("99.184.216.34", 80)]
+    end
 
     Spec.after_each do
       WebMock.reset
@@ -166,7 +181,7 @@ describe TestableYsplit do
             .to_return(status: 302, headers: {"Location" => "https://example.com/redirect#{i + 1}.yaml"})
         end
 
-        expect_raises(Crux::Commands::Ysplit::YsplitError, /Max redirects exceeded/) do
+        expect_raises(Crux::Commands::Ysplit::YsplitError, /Redirect loop detected/) do
           subject.test_fetch_remote(URI.parse("https://example.com/redirect0.yaml"))
         end
       end
@@ -194,13 +209,14 @@ describe TestableYsplit do
     end
 
     context "raises on failure cases" do
-      it "raises YsplitError on non-2xx/3xx responses" do
+      it "raises YsplitError on non-2xx/3xx responses without leaking body data" do
         WebMock.stub(:get, "https://example.com/manifests.yaml")
-          .to_return(status: 404, body: "Not Found")
+          .to_return(status: 404, body: "super-secret-dont-leak")
 
-        expect_raises(Crux::Commands::Ysplit::YsplitError, /HTTP 404/) do
+        error = expect_raises(Crux::Commands::Ysplit::YsplitError, /HTTP 404/) do
           subject.test_fetch_remote(URI.parse("https://example.com/manifests.yaml"))
         end
+        error.message.not_nil!.should_not contain("super-secret-dont-leak")
       end
 
       it "raises YsplitError on network failures" do
@@ -217,27 +233,32 @@ describe Crux::Commands::Ysplit do
 
   describe "#validate_yaml_url" do
     context "with valid URLS" do
-      it "accepts http:// URL with .yaml extension" do
-        url = URI.parse("http://example.com/manifests.yaml")
+      it "accepts https:// URL with .yaml or .yml extension" do
+        url = URI.parse("https://example.com/manifests.yaml")
         result = subject.validate_yaml_url(url)
         result.should be_truthy
-      end
 
-      it "accepts https:// URL with .yml extension" do
-        url = URI.parse("https://raw.githubusercontent.com/org/repo/branch/deploy.yml")
-        result = subject.validate_yaml_url(url)
-        result.should be_truthy
+        url_yml = URI.parse("https://raw.githubusercontent.com/org/repo/branch/deploy.yml")
+        result_yml = subject.validate_yaml_url(url)
+        result_yml.should be_truthy
       end
 
       it "accepts case-insensitive .YAML extension" do
-        url = URI.parse("http://example.com/manifests.YAML")
+        url = URI.parse("https://example.com/manifests.YAML")
         result = subject.validate_yaml_url(url)
         result.should be_truthy
       end
     end
 
     context "with invalid URLS" do
-      it "rejects non http(s):// scheme" do
+      it "rejects http scheme" do
+        url = URI.parse("http://example.com/file.yaml")
+        expect_raises(Crux::Commands::Ysplit::YsplitError) do
+          subject.validate_yaml_url(url)
+        end
+      end
+
+      it "rejects non-https:// scheme" do
         url = URI.parse("ftp://example.com/file.yaml")
         expect_raises(Crux::Commands::Ysplit::YsplitError) do
           subject.validate_yaml_url(url)

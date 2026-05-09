@@ -312,16 +312,20 @@ module Crux::Commands
           parsed = URI.parse(location)
           redirect_uri = parsed.absolute? ? parsed : url.resolve(parsed)
         elsif resp.success?
+          # Annoyingly, fall back to body wrapped in an io for Webmock, since it doesn't support body_io
+          # Real clients will use body_io, but this is semantically equivalent for testing
+          io = resp.body_io? || IO::Memory.new(resp.body)
           sink = IO::Memory.new
-          copied = IO.copy(resp.body_io, sink, MAX_RESPONSE_BYTES + 1)
+          copied = IO.copy(io, sink, MAX_RESPONSE_BYTES + 1)
           if copied > MAX_RESPONSE_BYTES
             raise YsplitError.new("Response body exceeds #{MAX_RESPONSE_BYTES / 1024 / 1024}MB limit")
           end
           result = sink.to_s
         else
           # Drain a small slice of the body for debug only diagnostics
+          io = resp.body_io? || IO::Memory.new(resp.body)
           sink = IO::Memory.new
-          IO.copy(resp.body_io, sink, MAX_DEBUG_BODY_BYTES + 1)
+          IO.copy(io, sink, MAX_DEBUG_BODY_BYTES + 1)
           debug "HTTP #{resp.status_code} truncated to #{MAX_DEBUG_BODY_BYTES}B: #{sink}"
           raise YsplitError.new("HTTP #{resp.status_code} from '#{url}'")
         end
