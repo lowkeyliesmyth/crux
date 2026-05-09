@@ -258,16 +258,16 @@ module Crux::Commands
       end
     end
 
-    # Reads YAML content from a local file path (supports ~/ homedir expansion), streaming with MAX_RESPONSE_BYTES enforced during read.
+    # Reads YAML content from a local file path (supports ~/ homedir expansion), streaming with MAX_BYTES enforced during read.
     #
     # Returns the file contents as a String.
-    private def read_local_file(path : String) : String
+    protected def read_local_file(path : String) : String
       expanded = File.expand_path(path)
       File.open(expanded) do |io|
         sink = IO::Memory.new
-        copied = IO.copy(io, sink, MAX_RESPONSE_BYTES + 1)
-        if copied > MAX_RESPONSE_BYTES
-          raise YsplitError.new("File '#{path}' exceeds #{MAX_RESPONSE_BYTES // 1024 // 1024}MB limit")
+        copied = IO.copy(io, sink, MAX_BYTES + 1)
+        if copied > MAX_BYTES
+          raise YsplitError.new("File '#{path}' exceeds #{MAX_BYTES // 1024 // 1024}MB limit")
         end
         sink.to_s
       end
@@ -282,8 +282,8 @@ module Crux::Commands
     end
 
     # Max response body size in MB
-    # Manifest retrieval from remote URLs rarely exceeds a few MB. 20MB bounds the request size with sufficient headroom while guarding against crazy large responses.
-    MAX_RESPONSE_BYTES = 20 * 1024 * 1024
+    # Manifest retrieval from remote URLs rarely exceeds a few MB. Bound the request size with sufficient headroom while guarding against crazy large responses.
+    MAX_BYTES = 50 * 1024 * 1024
 
     # Required for retrieval from Github Releases, which use redirects.
     # Guard against processing too many redirects causing infinite loops.
@@ -298,7 +298,7 @@ module Crux::Commands
 
     # Fetches YAML content from a remote HTTPS URL.
     # Validates dest IP and follows up to MAX_REDIRECTS redirects (3xx in header).
-    # Streams up to MAX_RESPONSE_BYTES size limit on the response body.
+    # Streams up to MAX_BYTES size limit on the response body.
     # Returns the HTTP response body.
     # Exits with an error on network failure, non-2XX status code, disallowed destination, or exceeded limits.
     protected def fetch_remote(url : URI, redirects_remaining : Int32 = MAX_REDIRECTS) : String
@@ -324,9 +324,9 @@ module Crux::Commands
           # Real clients will use body_io, but this is semantically equivalent for testing
           io = resp.body_io? || IO::Memory.new(resp.body)
           sink = IO::Memory.new
-          copied = IO.copy(io, sink, MAX_RESPONSE_BYTES + 1)
-          if copied > MAX_RESPONSE_BYTES
-            raise YsplitError.new("Response body exceeds #{MAX_RESPONSE_BYTES / 1024 / 1024}MB limit")
+          copied = IO.copy(io, sink, MAX_BYTES + 1)
+          if copied > MAX_BYTES
+            raise YsplitError.new("Response body exceeds #{MAX_BYTES / 1024 / 1024}MB limit")
           end
           result = sink.to_s
         else

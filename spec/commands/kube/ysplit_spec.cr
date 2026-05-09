@@ -197,8 +197,8 @@ describe TestableYsplit do
     end
 
     context "respects size limits" do
-      it "raises YsplitError when response body exceeds MAX_RESPONSE_BYTES (20MB)" do
-        oversized = "a" * (Crux::Commands::Ysplit::MAX_RESPONSE_BYTES + 1)
+      it "raises YsplitError when response body exceeds MAX_BYTES" do
+        oversized = "a" * (Crux::Commands::Ysplit::MAX_BYTES + 1)
         WebMock.stub(:get, "https://example.com/manifests.yaml")
           .to_return(status: 200, body: oversized)
 
