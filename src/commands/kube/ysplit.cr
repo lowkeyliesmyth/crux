@@ -258,19 +258,27 @@ module Crux::Commands
       end
     end
 
-    # Reads YAML content from a local file path (supports ~/ homedir expansion)
-    # Returns the file contents.
+    # Reads YAML content from a local file path (supports ~/ homedir expansion), streaming with MAX_RESPONSE_BYTES enforced during read.
+    #
+    # Returns the file contents as a String.
     private def read_local_file(path : String) : String
       expanded = File.expand_path(path)
-      begin
-        File.read(expanded)
-      rescue File::NotFoundError
-        error "File not found: #{path}"
-        exit_program 1
-      rescue ex : Exception
-        error "Could not read file: '#{path}': #{ex.message}"
-        exit_program 1
+      File.open(expanded) do |io|
+        sink = IO::Memory.new
+        copied = IO.copy(io, sink, MAX_RESPONSE_BYTES + 1)
+        if copied > MAX_RESPONSE_BYTES
+          raise YsplitError.new("File '#{path}' exceeds #{MAX_RESPONSE_BYTES // 1024 // 1024}MB limit")
+        end
+        sink.to_s
       end
+    rescue ex : YsplitError
+      raise ex
+    rescue File::NotFoundError
+      error "File not found: #{path}"
+      exit_program 1
+    rescue ex : Exception
+      error "Could not read file: '#{path}': #{ex.message}"
+      exit_program 1
     end
 
     # Max response body size in MB
