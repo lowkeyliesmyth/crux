@@ -219,7 +219,7 @@ module Crux::Commands
     def post_run(arguments : Cling::Arguments, options : Cling::Options) : Nil
     end
 
-    # Validate that the user-provided URL is an HTTP endpoint and likely contains YAML
+    # Validate that the user-provided URL is an HTTPS endpoint and likely contains YAML
     # Returns string if valid, raises YsplitError if invalid.
     def validate_yaml_url(url : URI) : String
       if url.scheme == "https" &&
@@ -227,7 +227,7 @@ module Crux::Commands
          (["yaml", "yml"].includes?(url.path.split(".").last.downcase))
         url.to_s
       else
-        raise YsplitError.new("'#{url.to_s.colorize.red}' is not a valid url containing YAML")
+        raise YsplitError.new("'#{url.to_s.colorize.red}' is not a valid HTTPS url containing YAML")
       end
     end
 

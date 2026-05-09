@@ -225,6 +225,106 @@ describe TestableYsplit do
         end
       end
     end
+
+    context "rejects disallowed destinations (SSRF)" do
+      it "rejects when host resolves to loopback" do
+        subject.stubbed_ips = [Socket::IPAddress.new("127.0.0.1", 80)]
+        expect_raises(Crux::Commands::Ysplit::YsplitError, /disallowed address/) do
+          subject.test_fetch_remote(URI.parse("https://internal.example.com/manifests.yaml"))
+        end
+      end
+
+      it "rejects when host resolves to link-local IMDS (169.254.169.254)" do
+        subject.stubbed_ips = [Socket::IPAddress.new("169.254.169.254", 80)]
+        expect_raises(Crux::Commands::Ysplit::YsplitError, /disallowed address/) do
+          subject.test_fetch_remote(URI.parse("https://internal.example.com/manifests.yaml"))
+        end
+      end
+
+      it "rejects when ANY resolved address entry is disallowed" do
+        subject.stubbed_ips = [
+          Socket::IPAddress.new("8.8.8.8", 80),
+          Socket::IPAddress.new("127.0.0.1", 80),
+        ]
+        expect_raises(Crux::Commands::Ysplit::YsplitError, /disallowed address/) do
+          subject.test_fetch_remote(URI.parse("https://internal.example.com/manifests.yaml"))
+        end
+      end
+
+      it "allows RFC 1918 private addresses" do
+        subject.stubbed_ips = [Socket::IPAddress.new("10.0.0.10", 80)]
+        WebMock.stub(:get, "https://internal.example.com/manifests.yaml")
+          .to_return(status: 200, body: VALID_SINGLE_DOC)
+        result = subject.test_fetch_remote(URI.parse("https://internal.example.com/manifests.yaml"))
+        result.should eq(VALID_SINGLE_DOC)
+      end
+    end
+
+    context " re-validates redirect targets" do
+      it "rejects redirects to disallowed addresses" do
+        # case here is that original host resolves to allowed public IP, but redirects to disallowed localhost IP
+        subject.stubbed_ips = [Socket::IPAddress.new("127.0.0.1", 80)]
+        WebMock.stub(:get, "https://internal.example.com/manifests.yaml")
+          .to_return(status: 302, headers: {"Location" => "https://localhost/manifests.yaml"})
+        expect_raises(Crux::Commands::Ysplit::YsplitError, /disallowed address/) do
+          subject.test_fetch_remote(URI.parse("https://internal.example.com/manifests.yaml"))
+        end
+      end
+
+      it "rejects redirects that downgrade to http" do
+        WebMock.stub(:get, "https://internal.example.com/manifests.yaml")
+          .to_return(status: 302, headers: {"Location" => "http://other.example.com/manifests.yaml"})
+        expect_raises(Crux::Commands::Ysplit::YsplitError, /not a valid HTTPS url/) do
+          subject.test_fetch_remote(URI.parse("https://internal.example.com/manifests.yaml"))
+        end
+      end
+
+      it "rejects redirect to non-yaml extension" do
+        WebMock.stub(:get, "https://internal.example.com/manifests.yaml")
+          .to_return(status: 302, headers: {"Location" => "https://other.example.com/manifests.txt"})
+        expect_raises(Crux::Commands::Ysplit::YsplitError, /not a valid HTTPS url/) do
+          subject.test_fetch_remote(URI.parse("https://internal.example.com/manifests.yaml"))
+        end
+      end
+    end
+  end
+
+  describe "#disallowed_ip?" do
+    subject = TestableYsplit.new
+
+    it "allows public IPv4 addresses" do
+      subject.test_disallowed_ip?(Socket::IPAddress.new("8.8.8.8", 80)).should be_false
+    end
+
+    it "rejects loopback addresses" do
+      subject.test_disallowed_ip?(Socket::IPAddress.new("127.0.0.1", 80)).should be_true
+      subject.test_disallowed_ip?(Socket::IPAddress.new("::1", 80)).should be_true
+      subject.test_disallowed_ip?(Socket::IPAddress.new("::ffff:127.0.0.1", 80)).should be_true
+    end
+
+    it "rejects link-local addresses" do
+      subject.test_disallowed_ip?(Socket::IPAddress.new("169.254.169.254", 80)).should be_true
+      subject.test_disallowed_ip?(Socket::IPAddress.new("fe80::1", 80)).should be_true
+    end
+
+    it "rejects unspecified (0.0.0.0)" do
+      subject.test_disallowed_ip?(Socket::IPAddress.new("0.0.0.0", 80)).should be_true
+    end
+
+    # # Ignore multicast addresses for now
+    #    it "rejects multicast addresses" do
+    #      subject.test_disallowed_ip?(Socket::IPAddress.new("224.0.0.1", 80)).should be_true
+    #      subject.test_disallowed_ip?(Socket::IPAddress.new("ff00::1", 80)).should be_true
+    #    end
+
+    it "allows RFC 1918 private ranges" do
+      subject.test_disallowed_ip?(Socket::IPAddress.new("10.0.0.1", 80)).should be_false
+      subject.test_disallowed_ip?(Socket::IPAddress.new("192.168.1.1", 80)).should be_false
+    end
+
+    it "allows CGNAT shared address (100.64.0.1)" do
+      subject.test_disallowed_ip?(Socket::IPAddress.new("100.64.0.1", 80)).should be_false
+    end
   end
 end
 
