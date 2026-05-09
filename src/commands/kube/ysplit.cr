@@ -288,40 +288,52 @@ module Crux::Commands
     # Ceiling on response body shown during debugging
     MAX_DEBUG_BODY_BYTES = 256
 
-    # Fetches YAML content from a remote HTTP or HTTPS URL.
-    # Follows up to MAX_REDIRECTS redirects (3xx in header).
-    # Enforces MAX_REMOTE_BYTES size limit on the response body.
+    # Fetches YAML content from a remote HTTPS URL.
+    # Validates dest IP and follows up to MAX_REDIRECTS redirects (3xx in header).
+    # Streams up to MAX_RESPONSE_BYTES size limit on the response body.
     # Returns the HTTP response body.
-    # Exits with an error on network failure, non-2XX status code, or exceeded limits.
+    # Exits with an error on network failure, non-2XX status code, disallowed destination, or exceeded limits.
     protected def fetch_remote(url : URI, redirects_remaining : Int32 = MAX_REDIRECTS) : String
-      response = HTTP::Client.get(url)
+      validate_url_dest(url)
 
-      # Handle redirects here up to MAX_REDIRECTS times
-      if response.status.redirection?
-        location = response.headers["Location"]?
-        unless location
-          raise YsplitError.new("HTTP #{response.status_code}: Redirect with no Location header from '#{url}'")
+      client = HTTP::Client.new(url)
+      client.connect_timeout = HTTP_CONN_TIMEOUT
+      client.read_timeout = HTTP_READ_TIMEOUT
+
+      result : String? = nil
+      redirect_uri : URI? = nil
+
+      client.get(url.request_target) do |resp|
+        if resp.status.redirection?
+          location = resp.headers["Location"]?
+          unless location
+            raise YsplitError.new("HTTP #{resp.status_code}: Redirect with no Location header from '#{url}'")
+          end
+          parsed = URI.parse(location)
+          redirect_uri = parsed.absolute? ? parsed : url.resolve(parsed)
+        elsif resp.success?
+          sink = IO::Memory.new
+          copied = IO.copy(resp.body_io, sink, MAX_RESPONSE_BYTES + 1)
+          if copied > MAX_RESPONSE_BYTES
+            raise YsplitError.new("Response body exceeds #{MAX_RESPONSE_BYTES / 1024 / 1024}MB limit")
+          end
+          result = sink.to_s
+        else
+          # Drain a small slice of the body for debug only diagnostics
+          sink = IO::Memory.new
+          IO.copy(resp.body_io, sink, MAX_DEBUG_BODY_BYTES + 1)
+          debug "HTTP #{resp.status_code} truncated to #{MAX_DEBUG_BODY_BYTES}B: #{sink}"
+          raise YsplitError.new("HTTP #{resp.status_code} from '#{url}'")
         end
-
-        if redirects_remaining <= 0
-          raise YsplitError.new("Max redirects exceeded (#{MAX_REDIRECTS}): Redirect loop detected")
-        end
-
-        redirect_uri = URI.parse(location)
-        # Resolve relative redirects against the original url
-        redirect_uri = url.resolve(redirect_uri) unless redirect_uri.absolute?
-
-        redirects_remaining -= 1
-        return fetch_remote(redirect_uri, redirects_remaining)
       end
 
-      if response.body.bytesize > MAX_RESPONSE_BYTES
-        raise YsplitError.new("Response body exceeds #{MAX_RESPONSE_BYTES / 1024 / 1024}MB limit")
+      if redirect = redirect_uri
+        raise YsplitError.new("Max #{MAX_REDIRECTS} redirects exceeded: Redirect loop detected") if redirects_remaining <= 0
+        validate_yaml_url(redirect)
+        return fetch_remote(redirect, redirects_remaining - 1)
       end
-      unless response.success?
-        raise YsplitError.new("HTTP #{response.status_code}: #{response.body}")
-      end
-      response.body
+
+      result.not_nil!
     rescue ex : YsplitError
       raise ex
     rescue ex : Exception
