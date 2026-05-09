@@ -114,6 +114,10 @@ class TestableYsplit < Crux::Commands::Ysplit
   def test_fetch_remote(url : URI, redirects_remaining : Int32 = MAX_REDIRECTS) : String
     fetch_remote(url, redirects_remaining)
   end
+
+  def test_read_local_file(path : String) : String
+    read_local_file(path)
+  end
 end
 
 describe TestableYsplit do
@@ -288,6 +292,32 @@ describe TestableYsplit do
       end
     end
   end
+
+  #  describe "#read_local_file" do
+  #    subject = TestableYsplit.new
+  #    tmp_file = ""
+  #
+  #    before_each do
+  #      tmp_file = File.join(Dir.tempdir, "ysplit_read_spec_#{Time.utc.to_unix_ms}")
+  #    end
+  #
+  #    after_each do
+  #      File.delete(tmp_file) if File.exists?(tmp_file)
+  #    end
+  #
+  #    it "reads a small file unchanged" do
+  #      File.write(tmp_file, VALID_SINGLE_DOC)
+  #      subject.test_read_local_file(tmp_file).should eq(VALID_SINGLE_DOC)
+  #    end
+  #
+  #    it "raises when file exceeds MAX_BYTES" do
+  #      content = "a" * (Crux::Commands::Ysplit::MAX_BYTES + 1)
+  #      File.write(tmp_file, content)
+  #      expect_raises(Crux::Commands::Ysplit::YsplitError, /exceeds.*limit/) do
+  #        subject.test_read_local_file(tmp_file)
+  #      end
+  #    end
+  #  end
 
   describe "#disallowed_ip?" do
     subject = TestableYsplit.new
