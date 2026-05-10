@@ -1,0 +1,28 @@
+# yaml-language-server: $schema=https://taskfile.dev/schema.json
+version: '3'
+
+tasks:
+  spec:
+    desc: Run Crystal specs
+    cmds:
+      - crystal spec
+
+  lint:
+    desc: Run Ameba linter
+    cmds:
+      - bin/ameba
+
+  coverage:
+    desc: Run code coverage
+    cmds:
+      - scripts/coverage.sh
+
+  actionlint:
+    desc: Lint GitHub Actions workflows
+    cmds:
+      - actionlint
+
+  default:
+    desc: Run default spec-lint checks
+    deps: [spec, lint]
+

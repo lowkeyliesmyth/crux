@@ -7,9 +7,9 @@ authors:
 dependencies:
   cling:
     github: devnote-dev/cling
-    version:
-      ">= 3.1.0"
-      #commit: 3cd8b0baebb4b887b48a374f7e3f0887699fa4e5
+    #version: ">= 3.1.0"
+    # Commit corresponds to 3.1.0
+    commit: e23db4aa04ce4727a1e3f699088c114a1930c3e7
 
 development_dependencies:
   ameba:

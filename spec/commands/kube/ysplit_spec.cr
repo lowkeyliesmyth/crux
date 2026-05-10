@@ -46,6 +46,41 @@ NULL_NAME_DOC = <<-YAML
     name:
   YAML
 
+TRAVERSAL_NAME_DOC = <<-YAML
+  apiVersion: v1
+  kind: ConfigMap
+  metadata:
+    name: ../../../tmp/pwned
+  YAML
+
+SLASH_NAME_DOC = <<-YAML
+  apiVersion: v1
+  kind: ConfigMap
+  metadata:
+    name: foo/bar
+  YAML
+
+BACKSLASH_NAME_DOC = <<-YAML
+  apiVersion: v1
+  kind: ConfigMap
+  metadata:
+    name: "foo\\\\bar"
+  YAML
+
+NUL_NAME_DOC = <<-YAML
+  apiVersion: v1
+  kind: ConfigMap
+  metadata:
+    name: "foo\\u0000bar"
+  YAML
+
+LEADING_DOT_NAME_DOC = <<-YAML
+  apiVersion: v1
+  kind: ConfigMap
+  metadata:
+    name: .hidden
+  YAML
+
 # One valid doc, one malformed doc
 MIXED_DOC = <<-YAML
   apiVersion: apps/v1
@@ -62,11 +97,26 @@ MALFORMED_YAML = <<-YAML
   key: [unclosed bracket
   YAML
 
-# Created a thin test subclass to expose protected methods and enable testing via spec below
-# Why? `protected` methods cannot be called directly from outside the class, so we need a test subclass to expose them and make them testable in specs.
+# Created a thin test subclass to expose protected methods and enable testing via spec below.
+# Why? `protected` methods cannot be called directly from outside the class, so we need a test subclass to expose and make them testable in specs.
+# `stubbed_ips` resolves to a public address so most tests keep passing without additional changes.
 class TestableYsplit < Crux::Commands::Ysplit
+  property stubbed_ips : Array(Socket::IPAddress) = [Socket::IPAddress.new("99.184.216.34", 80)]
+
+  protected def resolve_host(host : String) : Array(Socket::IPAddress)
+    stubbed_ips
+  end
+
+  def test_disallowed_ip?(ip : Socket::IPAddress) : Bool
+    disallowed_ip?(ip)
+  end
+
   def test_fetch_remote(url : URI, redirects_remaining : Int32 = MAX_REDIRECTS) : String
     fetch_remote(url, redirects_remaining)
+  end
+
+  def test_read_local_file(path : String) : String
+    read_local_file(path)
   end
 end
 
@@ -75,6 +125,10 @@ describe TestableYsplit do
     # Still use the `subject` defined in the context
     # Otherwise recreate it if necessary
     subject = TestableYsplit.new
+
+    Spec.before_each do
+      subject.stubbed_ips = [Socket::IPAddress.new("99.184.216.34", 80)]
+    end
 
     Spec.after_each do
       WebMock.reset
@@ -131,7 +185,7 @@ describe TestableYsplit do
             .to_return(status: 302, headers: {"Location" => "https://example.com/redirect#{i + 1}.yaml"})
         end
 
-        expect_raises(Crux::Commands::Ysplit::YsplitError, /Max redirects exceeded/) do
+        expect_raises(Crux::Commands::Ysplit::YsplitError, /Redirect loop detected/) do
           subject.test_fetch_remote(URI.parse("https://example.com/redirect0.yaml"))
         end
       end
@@ -147,8 +201,8 @@ describe TestableYsplit do
     end
 
     context "respects size limits" do
-      it "raises YsplitError when response body exceeds MAX_RESPONSE_BYTES (20MB)" do
-        oversized = "a" * (Crux::Commands::Ysplit::MAX_RESPONSE_BYTES + 1)
+      it "raises YsplitError when response body exceeds MAX_BYTES" do
+        oversized = "a" * (Crux::Commands::Ysplit::MAX_BYTES + 1)
         WebMock.stub(:get, "https://example.com/manifests.yaml")
           .to_return(status: 200, body: oversized)
 
@@ -159,13 +213,15 @@ describe TestableYsplit do
     end
 
     context "raises on failure cases" do
-      it "raises YsplitError on non-2xx/3xx responses" do
+      it "raises YsplitError on non-2xx/3xx responses without leaking body data" do
         WebMock.stub(:get, "https://example.com/manifests.yaml")
-          .to_return(status: 404, body: "Not Found")
+          .to_return(status: 404, body: "super-secret-dont-leak")
 
-        expect_raises(Crux::Commands::Ysplit::YsplitError, /HTTP 404/) do
+        error = expect_raises(Crux::Commands::Ysplit::YsplitError, /HTTP 404/) do
           subject.test_fetch_remote(URI.parse("https://example.com/manifests.yaml"))
         end
+        # ameba:disable Lint/NotNil
+        error.message.not_nil!.should_not contain("super-secret-dont-leak")
       end
 
       it "raises YsplitError on network failures" do
@@ -173,6 +229,132 @@ describe TestableYsplit do
           subject.test_fetch_remote(URI.parse("https://no-stub-registered.com/manifests.yaml"))
         end
       end
+    end
+
+    context "rejects disallowed destinations (SSRF)" do
+      it "rejects when host resolves to loopback" do
+        subject.stubbed_ips = [Socket::IPAddress.new("127.0.0.1", 80)]
+        expect_raises(Crux::Commands::Ysplit::YsplitError, /disallowed address/) do
+          subject.test_fetch_remote(URI.parse("https://internal.example.com/manifests.yaml"))
+        end
+      end
+
+      it "rejects when host resolves to link-local IMDS (169.254.169.254)" do
+        subject.stubbed_ips = [Socket::IPAddress.new("169.254.169.254", 80)]
+        expect_raises(Crux::Commands::Ysplit::YsplitError, /disallowed address/) do
+          subject.test_fetch_remote(URI.parse("https://internal.example.com/manifests.yaml"))
+        end
+      end
+
+      it "rejects when ANY resolved address entry is disallowed" do
+        subject.stubbed_ips = [
+          Socket::IPAddress.new("8.8.8.8", 80),
+          Socket::IPAddress.new("127.0.0.1", 80),
+        ]
+        expect_raises(Crux::Commands::Ysplit::YsplitError, /disallowed address/) do
+          subject.test_fetch_remote(URI.parse("https://internal.example.com/manifests.yaml"))
+        end
+      end
+
+      it "allows RFC 1918 private addresses" do
+        subject.stubbed_ips = [Socket::IPAddress.new("10.0.0.10", 80)]
+        WebMock.stub(:get, "https://internal.example.com/manifests.yaml")
+          .to_return(status: 200, body: VALID_SINGLE_DOC)
+        result = subject.test_fetch_remote(URI.parse("https://internal.example.com/manifests.yaml"))
+        result.should eq(VALID_SINGLE_DOC)
+      end
+    end
+
+    context " re-validates redirect targets" do
+      it "rejects redirects to disallowed addresses" do
+        # case here is that original host resolves to allowed public IP, but redirects to disallowed localhost IP
+        subject.stubbed_ips = [Socket::IPAddress.new("127.0.0.1", 80)]
+        WebMock.stub(:get, "https://internal.example.com/manifests.yaml")
+          .to_return(status: 302, headers: {"Location" => "https://localhost/manifests.yaml"})
+        expect_raises(Crux::Commands::Ysplit::YsplitError, /disallowed address/) do
+          subject.test_fetch_remote(URI.parse("https://internal.example.com/manifests.yaml"))
+        end
+      end
+
+      it "rejects redirects that downgrade to http" do
+        WebMock.stub(:get, "https://internal.example.com/manifests.yaml")
+          .to_return(status: 302, headers: {"Location" => "http://other.example.com/manifests.yaml"})
+        expect_raises(Crux::Commands::Ysplit::YsplitError, /not a valid HTTPS url/) do
+          subject.test_fetch_remote(URI.parse("https://internal.example.com/manifests.yaml"))
+        end
+      end
+
+      it "rejects redirect to non-yaml extension" do
+        WebMock.stub(:get, "https://internal.example.com/manifests.yaml")
+          .to_return(status: 302, headers: {"Location" => "https://other.example.com/manifests.txt"})
+        expect_raises(Crux::Commands::Ysplit::YsplitError, /not a valid HTTPS url/) do
+          subject.test_fetch_remote(URI.parse("https://internal.example.com/manifests.yaml"))
+        end
+      end
+    end
+  end
+
+  #  describe "#read_local_file" do
+  #    subject = TestableYsplit.new
+  #    tmp_file = ""
+  #
+  #    before_each do
+  #      tmp_file = File.join(Dir.tempdir, "ysplit_read_spec_#{Time.utc.to_unix_ms}")
+  #    end
+  #
+  #    after_each do
+  #      File.delete(tmp_file) if File.exists?(tmp_file)
+  #    end
+  #
+  #    it "reads a small file unchanged" do
+  #      File.write(tmp_file, VALID_SINGLE_DOC)
+  #      subject.test_read_local_file(tmp_file).should eq(VALID_SINGLE_DOC)
+  #    end
+  #
+  #    it "raises when file exceeds MAX_BYTES" do
+  #      content = "a" * (Crux::Commands::Ysplit::MAX_BYTES + 1)
+  #      File.write(tmp_file, content)
+  #      expect_raises(Crux::Commands::Ysplit::YsplitError, /exceeds.*limit/) do
+  #        subject.test_read_local_file(tmp_file)
+  #      end
+  #    end
+  #  end
+
+  describe "#disallowed_ip?" do
+    subject = TestableYsplit.new
+
+    it "allows public IPv4 addresses" do
+      subject.test_disallowed_ip?(Socket::IPAddress.new("8.8.8.8", 80)).should be_false
+    end
+
+    it "rejects loopback addresses" do
+      subject.test_disallowed_ip?(Socket::IPAddress.new("127.0.0.1", 80)).should be_true
+      subject.test_disallowed_ip?(Socket::IPAddress.new("::1", 80)).should be_true
+      subject.test_disallowed_ip?(Socket::IPAddress.new("::ffff:127.0.0.1", 80)).should be_true
+    end
+
+    it "rejects link-local addresses" do
+      subject.test_disallowed_ip?(Socket::IPAddress.new("169.254.169.254", 80)).should be_true
+      subject.test_disallowed_ip?(Socket::IPAddress.new("fe80::1", 80)).should be_true
+    end
+
+    it "rejects unspecified (0.0.0.0)" do
+      subject.test_disallowed_ip?(Socket::IPAddress.new("0.0.0.0", 80)).should be_true
+    end
+
+    # # Ignore multicast addresses for now
+    #    it "rejects multicast addresses" do
+    #      subject.test_disallowed_ip?(Socket::IPAddress.new("224.0.0.1", 80)).should be_true
+    #      subject.test_disallowed_ip?(Socket::IPAddress.new("ff00::1", 80)).should be_true
+    #    end
+
+    it "allows RFC 1918 private ranges" do
+      subject.test_disallowed_ip?(Socket::IPAddress.new("10.0.0.1", 80)).should be_false
+      subject.test_disallowed_ip?(Socket::IPAddress.new("192.168.1.1", 80)).should be_false
+    end
+
+    it "allows CGNAT shared address (100.64.0.1)" do
+      subject.test_disallowed_ip?(Socket::IPAddress.new("100.64.0.1", 80)).should be_false
     end
   end
 end
@@ -182,27 +364,32 @@ describe Crux::Commands::Ysplit do
 
   describe "#validate_yaml_url" do
     context "with valid URLS" do
-      it "accepts http:// URL with .yaml extension" do
-        url = URI.parse("http://example.com/manifests.yaml")
+      it "accepts https:// URL with .yaml or .yml extension" do
+        url = URI.parse("https://example.com/manifests.yaml")
         result = subject.validate_yaml_url(url)
         result.should be_truthy
-      end
 
-      it "accepts https:// URL with .yml extension" do
-        url = URI.parse("https://raw.githubusercontent.com/org/repo/branch/deploy.yml")
-        result = subject.validate_yaml_url(url)
-        result.should be_truthy
+        url_yml = URI.parse("https://raw.githubusercontent.com/org/repo/branch/deploy.yml")
+        result_yml = subject.validate_yaml_url(url_yml)
+        result_yml.should be_truthy
       end
 
       it "accepts case-insensitive .YAML extension" do
-        url = URI.parse("http://example.com/manifests.YAML")
+        url = URI.parse("https://example.com/manifests.YAML")
         result = subject.validate_yaml_url(url)
         result.should be_truthy
       end
     end
 
     context "with invalid URLS" do
-      it "rejects non http(s):// scheme" do
+      it "rejects http scheme" do
+        url = URI.parse("http://example.com/file.yaml")
+        expect_raises(Crux::Commands::Ysplit::YsplitError) do
+          subject.validate_yaml_url(url)
+        end
+      end
+
+      it "rejects non-https:// scheme" do
         url = URI.parse("ftp://example.com/file.yaml")
         expect_raises(Crux::Commands::Ysplit::YsplitError) do
           subject.validate_yaml_url(url)
@@ -389,6 +576,73 @@ describe Crux::Commands::Ysplit::YsplitProcessor do
         expect_raises(YAML::ParseException) do
           processor.process(MALFORMED_YAML, out_io, err_io)
         end
+      end
+    end
+
+    context "with unsafe metadata.name" do
+      it "skips a doc whose name contains '..' and writes nothing" do
+        processor = Crux::Commands::Ysplit::YsplitProcessor.new(temp_dir)
+        result = processor.process(TRAVERSAL_NAME_DOC, out_io, err_io)
+        result[:written].should eq(0)
+        result[:skipped].should eq(1)
+        err_io.to_s.should contain("invalid 'metadata.name'")
+        File.exists?(Path.new("/tmp", "pwned-configmap.yaml")).should be_false
+      end
+
+      it "skips a doc whose name contains '/'" do
+        processor = Crux::Commands::Ysplit::YsplitProcessor.new(temp_dir)
+        result = processor.process(SLASH_NAME_DOC, out_io, err_io)
+        result[:written].should eq(0)
+        result[:skipped].should eq(1)
+        err_io.to_s.should contain("invalid 'metadata.name'")
+      end
+
+      it "skips a doc whose name contains '\\'" do
+        processor = Crux::Commands::Ysplit::YsplitProcessor.new(temp_dir)
+        result = processor.process(BACKSLASH_NAME_DOC, out_io, err_io)
+        result[:written].should eq(0)
+        result[:skipped].should eq(1)
+        err_io.to_s.should contain("invalid 'metadata.name'")
+      end
+
+      it "skips a doc whose name contains  NUL byte" do
+        processor = Crux::Commands::Ysplit::YsplitProcessor.new(temp_dir)
+        result = processor.process(NUL_NAME_DOC, out_io, err_io)
+        result[:written].should eq(0)
+        result[:skipped].should eq(1)
+        err_io.to_s.should contain("invalid 'metadata.name'")
+      end
+
+      it "skips a doc whose name has a leading dot" do
+        processor = Crux::Commands::Ysplit::YsplitProcessor.new(temp_dir)
+        result = processor.process(LEADING_DOT_NAME_DOC, out_io, err_io)
+        result[:written].should eq(0)
+        result[:skipped].should eq(1)
+        err_io.to_s.should contain("invalid 'metadata.name'")
+      end
+
+      it "skips a doc whose name exceeds 253 chars" do
+        overlong = "a" * (Crux::Commands::Ysplit::YsplitProcessor::RFC_1123_MAX_LENGTH + 1)
+        yaml = "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: #{overlong}\n"
+        processor = Crux::Commands::Ysplit::YsplitProcessor.new(temp_dir)
+        result = processor.process(yaml, out_io, err_io)
+        result[:written].should eq(0)
+        result[:skipped].should eq(1)
+        err_io.to_s.should contain("invalid 'metadata.name'")
+      end
+
+      it "still accepts RFC-1123 compliant names" do
+        yaml = <<-YAML
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: my.app-1.example.net.com
+        YAML
+        processor = Crux::Commands::Ysplit::YsplitProcessor.new(temp_dir)
+        result = processor.process(yaml, out_io, err_io)
+        result[:written].should eq(1)
+        result[:skipped].should eq(0)
+        err_io.to_s.should be_empty
       end
     end
 

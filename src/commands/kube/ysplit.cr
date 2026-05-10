@@ -1,5 +1,6 @@
 require "file_utils"
 require "http/client"
+require "socket"
 require "uri"
 require "yaml"
 
@@ -53,6 +54,28 @@ module Crux::Commands
       def initialize(@outdir : String, @prefix : String? = nil)
       end
 
+      # Regex for valid RFC 1123 subdomain names, which is used for the K8s metadata.name field
+      # Used here to gate path construction and prevent a hostile manifest from writing outside of @outdir.
+      # Notable exception: `:` is allowed because of names like `cert-manager:leaderelection`
+      RFC_1123_SUBDOMAIN  = /\A[a-z0-9]([-a-z0-9:]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9:]*[a-z0-9])?)*\z/
+      RFC_1123_MAX_LENGTH = 253
+
+      # Returns true if `name` is a valid RFC-1123 DNS domain name
+      private def safe_resource_name?(name : String) : Bool
+        return false if name.empty? || name.bytesize > RFC_1123_MAX_LENGTH
+        RFC_1123_SUBDOMAIN.matches?(name)
+      end
+
+      # Ensure `filename` is inside @outdir to prevent a hostile manifest from writing outside of it.
+      # This should never happen, but defense in depth and whatnot.
+      #
+      # Returns true if `filename` is in @outdir as it should be, false otherwise.
+      private def write_path_inside_outdir?(filename : Path) : Bool
+        expanded_outdir = File.expand_path(@outdir)
+        expanded_path = File.expand_path(filename.to_s)
+        expanded_path.starts_with?(expanded_outdir)
+      end
+
       # Processes a multi-doc YAML string and writes each doc to a separate file in outdir.
       # Docs that are null/empty or invalid K8s manifests are skipped with a warning.
       #
@@ -77,7 +100,19 @@ module Crux::Commands
             next
           end
 
+          unless safe_resource_name?(k8s_doc.resource_name)
+            err_io.puts "Skipping: Doc #{i + 1} has an invalid 'metadata.name' (#{k8s_doc.resource_name}).\n"
+            skipped += 1
+            next
+          end
+
           filename = build_filename(k8s_doc.resource_name, k8s_doc.resource_kind)
+
+          unless write_path_inside_outdir?(filename)
+            err_io.puts "Skipping: Doc #{i + 1} resolved to a path outside outdir (#{filename}).\n"
+            skipped += 1
+            next
+          end
 
           # TODO: Update out_io formatting to match Crux::Commands::Base#info, and Crux::Commands::Base#error
           begin
@@ -184,76 +219,135 @@ module Crux::Commands
     def post_run(arguments : Cling::Arguments, options : Cling::Options) : Nil
     end
 
-    # Validate that the user-provided URL is an HTTP endpoint and likely contains YAML
+    # Validate that the user-provided URL is an HTTPS endpoint and likely contains YAML
     # Returns string if valid, raises YsplitError if invalid.
     def validate_yaml_url(url : URI) : String
-      valid_scheme : Regex = /^https?$/
-      if url.scheme.try { |scheme| valid_scheme.matches?(scheme) } &&
+      if url.scheme == "https" &&
          url.host &&
          (["yaml", "yml"].includes?(url.path.split(".").last.downcase))
         url.to_s
       else
-        raise YsplitError.new("'#{url.to_s.colorize.red}' is not a valid url containing YAML")
+        raise YsplitError.new("'#{url.to_s.colorize.red}' is not a valid HTTPS url containing YAML")
       end
     end
 
-    # Reads YAML content from a local file path (supports ~/ homedir expansion)
-    # Returns the file contents.
-    private def read_local_file(path : String) : String
-      expanded = File.expand_path(path)
-      begin
-        File.read(expanded)
-      rescue File::NotFoundError
-        error "File not found: #{path}"
-        exit_program 1
-      rescue ex : Exception
-        error "Could not read file: '#{path}': #{ex.message}"
-        exit_program 1
+    # Resolve remote `host` to IP address to prevent SSRF or DNS rebinding.
+    #
+    # Written as a seam so tests can mock host resolution without calling out.
+    protected def resolve_host(host : String) : Array(Socket::IPAddress)
+      Socket::Addrinfo.resolve(host, "http", type: Socket::Type::STREAM).map(&.ip_address)
+    end
+
+    # Checks if IPs are on an exclusion list (loopback, link-local, unspecified) that shouldn't be reached.
+    #
+    # Returns true if the IP is on the exclusion list, otherwise false.
+    protected def disallowed_ip?(ip : Socket::IPAddress) : Bool
+      ip.loopback? || ip.link_local? || ip.unspecified?
+    end
+
+    # Resolves the URL host to IP and rejects addresses that are on the exclusion list.
+    protected def validate_url_dest(url : URI) : Nil
+      host = url.host
+      raise YsplitError.new("'#{url}' has no host defined") unless host
+
+      ips = resolve_host(host)
+      raise YsplitError.new("Could not resolve host: '#{host}'") if ips.empty?
+
+      if disallowed = ips.find { |ip| disallowed_ip?(ip) }
+        raise YsplitError.new("#{host} resolves to disallowed address (loopback, link-local, or unspecified): #{disallowed}")
       end
+    end
+
+    # Reads YAML content from a local file path (supports ~/ homedir expansion), streaming with MAX_BYTES enforced during read.
+    #
+    # Returns the file contents as a String.
+    protected def read_local_file(path : String) : String
+      expanded = File.expand_path(path)
+      File.open(expanded) do |io|
+        sink = IO::Memory.new
+        copied = IO.copy(io, sink, MAX_BYTES + 1)
+        if copied > MAX_BYTES
+          raise YsplitError.new("File '#{path}' exceeds #{MAX_BYTES // 1024 // 1024}MB limit")
+        end
+        sink.to_s
+      end
+    rescue ex : YsplitError
+      raise ex
+    rescue File::NotFoundError
+      error "File not found: #{path}"
+      exit_program 1
+    rescue ex : Exception
+      error "Could not read file: '#{path}': #{ex.message}"
+      exit_program 1
     end
 
     # Max response body size in MB
-    # Manifest retrieval from remote URLs rarely exceeds a few MB. 20MB bounds the request size with sufficient headroom while guarding against crazy large responses.
-    MAX_RESPONSE_BYTES = 20 * 1024 * 1024
+    # Manifest retrieval from remote URLs rarely exceeds a few MB. Bound the request size with sufficient headroom while guarding against crazy large responses.
+    MAX_BYTES = 50 * 1024 * 1024
 
     # Required for retrieval from Github Releases, which use redirects.
     # Guard against processing too many redirects causing infinite loops.
     MAX_REDIRECTS = 5
 
-    # Fetches YAML content from a remote HTTP or HTTPS URL.
-    # Follows up to MAX_REDIRECTS redirects (3xx in header).
-    # Enforces MAX_REMOTE_BYTES size limit on the response body.
+    # HTTP timeouts to prevent hanging on slow or unreachable servers.
+    HTTP_CONN_TIMEOUT = 10.seconds
+    HTTP_READ_TIMEOUT = 30.seconds
+
+    # Ceiling on response body shown during debugging
+    MAX_DEBUG_BODY_BYTES = 256
+
+    # Fetches YAML content from a remote HTTPS URL.
+    # Validates dest IP and follows up to MAX_REDIRECTS redirects (3xx in header).
+    # Streams up to MAX_BYTES size limit on the response body.
     # Returns the HTTP response body.
-    # Exits with an error on network failure, non-2XX status code, or exceeded limits.
-    protected def fetch_remote(url : URI, redirects_remaining : Int32 = MAX_REDIRECTS) : String
-      response = HTTP::Client.get(url)
+    # Exits with an error on network failure, non-2XX status code, disallowed destination, or exceeded limits.
+    protected def fetch_remote(url : URI, redirects_remaining : Int32 = MAX_REDIRECTS) : String # ameba:disable Metrics/CyclomaticComplexity
 
-      # Handle redirects here up to MAX_REDIRECTS times
-      if response.status.redirection?
-        location = response.headers["Location"]?
-        unless location
-          raise YsplitError.new("HTTP #{response.status_code}: Redirect with no Location header from '#{url}'")
+      validate_url_dest(url)
+
+      client = HTTP::Client.new(url)
+      client.connect_timeout = HTTP_CONN_TIMEOUT
+      client.read_timeout = HTTP_READ_TIMEOUT
+
+      result : String? = nil
+      redirect_uri : URI? = nil
+
+      client.get(url.request_target) do |resp|
+        if resp.status.redirection?
+          location = resp.headers["Location"]?
+          unless location
+            raise YsplitError.new("HTTP #{resp.status_code}: Redirect with no Location header from '#{url}'")
+          end
+          parsed = URI.parse(location)
+          redirect_uri = parsed.absolute? ? parsed : url.resolve(parsed)
+        elsif resp.success?
+          # Annoyingly, fall back to body wrapped in an io for Webmock, since it doesn't support body_io
+          # Real clients will use body_io, but this is semantically equivalent for testing
+          io = resp.body_io? || IO::Memory.new(resp.body)
+          sink = IO::Memory.new
+          copied = IO.copy(io, sink, MAX_BYTES + 1)
+          if copied > MAX_BYTES
+            raise YsplitError.new("Response body exceeds #{MAX_BYTES / 1024 / 1024}MB limit")
+          end
+          result = sink.to_s
+        else
+          # Drain a small slice of the body for debug only diagnostics
+          io = resp.body_io? || IO::Memory.new(resp.body)
+          sink = IO::Memory.new
+          IO.copy(io, sink, MAX_DEBUG_BODY_BYTES + 1)
+          debug "HTTP #{resp.status_code} truncated to #{MAX_DEBUG_BODY_BYTES}B: #{sink}"
+          raise YsplitError.new("HTTP #{resp.status_code} from '#{url}'")
         end
-
-        if redirects_remaining <= 0
-          raise YsplitError.new("Max redirects exceeded (#{MAX_REDIRECTS}): Redirect loop detected")
-        end
-
-        redirect_uri = URI.parse(location)
-        # Resolve relative redirects against the original url
-        redirect_uri = url.resolve(redirect_uri) unless redirect_uri.absolute?
-
-        redirects_remaining -= 1
-        return fetch_remote(redirect_uri, redirects_remaining)
       end
 
-      if response.body.bytesize > MAX_RESPONSE_BYTES
-        raise YsplitError.new("Response body exceeds #{MAX_RESPONSE_BYTES / 1024 / 1024}MB limit")
+      if redirect = redirect_uri
+        raise YsplitError.new("Max #{MAX_REDIRECTS} redirects exceeded: Redirect loop detected") if redirects_remaining <= 0
+        validate_yaml_url(redirect)
+        return fetch_remote(redirect, redirects_remaining - 1)
       end
-      unless response.success?
-        raise YsplitError.new("HTTP #{response.status_code}: #{response.body}")
-      end
-      response.body
+
+      # ameba:disable Lint/NotNil
+      result.not_nil!
     rescue ex : YsplitError
       raise ex
     rescue ex : Exception
