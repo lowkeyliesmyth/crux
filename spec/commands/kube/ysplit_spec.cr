@@ -220,6 +220,7 @@ describe TestableYsplit do
         error = expect_raises(Crux::Commands::Ysplit::YsplitError, /HTTP 404/) do
           subject.test_fetch_remote(URI.parse("https://example.com/manifests.yaml"))
         end
+        # ameba:disable Lint/NotNil
         error.message.not_nil!.should_not contain("super-secret-dont-leak")
       end
 
@@ -369,7 +370,7 @@ describe Crux::Commands::Ysplit do
         result.should be_truthy
 
         url_yml = URI.parse("https://raw.githubusercontent.com/org/repo/branch/deploy.yml")
-        result_yml = subject.validate_yaml_url(url)
+        result_yml = subject.validate_yaml_url(url_yml)
         result_yml.should be_truthy
       end
 

@@ -301,7 +301,8 @@ module Crux::Commands
     # Streams up to MAX_BYTES size limit on the response body.
     # Returns the HTTP response body.
     # Exits with an error on network failure, non-2XX status code, disallowed destination, or exceeded limits.
-    protected def fetch_remote(url : URI, redirects_remaining : Int32 = MAX_REDIRECTS) : String
+    protected def fetch_remote(url : URI, redirects_remaining : Int32 = MAX_REDIRECTS) : String # ameba:disable Metrics/CyclomaticComplexity
+
       validate_url_dest(url)
 
       client = HTTP::Client.new(url)
@@ -345,6 +346,7 @@ module Crux::Commands
         return fetch_remote(redirect, redirects_remaining - 1)
       end
 
+      # ameba:disable Lint/NotNil
       result.not_nil!
     rescue ex : YsplitError
       raise ex
