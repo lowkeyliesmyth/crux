@@ -161,14 +161,7 @@ module Crux::Commands
       add_option 'r', "remote", description: "the HTTP/S URL to fetch a remote YAML manifest from", type: :single
     end
 
-    def pre_run(arguments : Cling::Arguments, options : Cling::Options) : Nil
-      if options.has? "help"
-        stdout.puts help_template
-        exit_program 0
-      end
-      @debug = true if options.has? "debug"
-      Colorize.enabled = false if options.has? "no-color"
-
+    def command_pre_run(arguments : Cling::Arguments, options : Cling::Options) : Nil
       # Handle the required but mutual-exclusivity of file and remote options early
       has_file = options.has?("file")
       has_remote = options.has?("remote")

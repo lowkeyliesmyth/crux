@@ -64,14 +64,7 @@ module Crux::Commands
       add_option 'v', "version", description: "helm chart version to use", type: :single
     end
 
-    def pre_run(arguments : Cling::Arguments, options : Cling::Options) : Nil
-      if options.has? "help"
-        stdout.puts help_template
-        exit_program 0
-      end
-      @debug = true if options.has? "debug"
-      Colorize.enabled = false if options.has? "no-color"
-
+    def command_pre_run(arguments : Cling::Arguments, options : Cling::Options) : Nil
       # fail early if helm is not installed
       unless @helm.installed?
         error "'helm' executable not found on PATH"
