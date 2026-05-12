@@ -4,7 +4,7 @@ require "../spec_helper"
 #
 # Setup a Crux command fixture that
 private class GlobalOrderingFixture < Crux::Commands::Base
-  class_property command_pre_run_called : Bool = false
+  class_property? command_pre_run_called : Bool = false
 
   def setup : Nil
     @name = "fixture"
@@ -29,7 +29,7 @@ describe Crux::Commands::Global do
 
       cmd.execute(["--help"])
 
-      GlobalOrderingFixture.command_pre_run_called.should be_false
+      GlobalOrderingFixture.command_pre_run_called?.should be_false
     end
   end
 end
