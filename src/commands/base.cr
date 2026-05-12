@@ -1,6 +1,8 @@
 module Crux::Commands
   # Override upstream Cling::Command with baseline command behaviors, options, and styles to be inherited by all crux commands.
   abstract class Base < Cling::Command
+    include Global
+
     # Patch upstream method to include these three options and behaviors to all commands by default
     def initialize
       super
@@ -76,18 +78,6 @@ module Crux::Commands
 
         io << "Description".upcase.colorize.blue.bold << '\n'
         io << @description
-      end
-    end
-
-    # Override the upstream cling pre_run method
-    # Intercept and apply default behavior for globally available options
-    def pre_run(arguments : Cling::Arguments, options : Cling::Options) : Nil
-      @debug = true if options.has? "debug"
-      Colorize.enabled = false if options.has? "no-color"
-
-      if options.has? "help"
-        stdout.puts help_template
-        exit_program 0
       end
     end
 

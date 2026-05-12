@@ -2,6 +2,7 @@ require "cling"
 require "colorize"
 require "yaml"
 
+require "./commands/global"
 require "./commands/base"
 require "./commands/*"
 require "./commands/kube/*"
