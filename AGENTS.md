@@ -71,26 +71,6 @@ spec/
 
 ## Development Workflow
 
-### Task Management
-
-Each namespace command maintains a dedicated `TASKS.md` file organized by subcommand:
-
-```
-TASKS.md structure:
-# Namespace: kube
-
-## Subcommand: ysplit
-- [ ] Task description
-- [x] Completed task
-
-## Subcommand: another-command
-- [ ] Task description
-```
-
-**Location:** Tasks live alongside their namespace command file (e.g., `src/commands/TASKS.md` for `kube`)
-
-**Purpose:** Track planned features, improvements, and migrate TODO comments from code
-
 ### Testing
 
 - Tests use Crystal's built-in spec framework
@@ -111,7 +91,6 @@ TASKS.md structure:
    - Create `src/commands/namespace.cr`
    - Extend `Base` class
    - Register in `src/crux.cr`
-   - Create `src/commands/TASKS.md`
 
 2. **Implementation Command**:
    - Create `src/commands/namespace/feature.cr`
@@ -119,7 +98,6 @@ TASKS.md structure:
    - Define arguments and options in `setup()`
    - Implement logic in `run()`
    - Add test at `spec/commands/namespace/feature_spec.cr`
-   - Document in namespace TASKS.md
 
 ### Error Handling
 
