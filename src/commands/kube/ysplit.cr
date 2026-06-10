@@ -116,7 +116,10 @@ module Crux::Commands
 
           # TODO: Update out_io formatting to match Crux::Commands::Base#info, and Crux::Commands::Base#error
           begin
-            File.write(filename, doc.to_yaml)
+            # ConfigMaps may carry embedded YAML blobs as double-quoted flow style scalars.
+            # Normalize to literal block scalar style for readability.
+            rendered = k8s_doc.resource_kind == "ConfigMap" ? Crux::Kube::YamlBlock.emit(doc) : doc.to_yaml
+            File.write(filename, rendered)
             out_io.puts "Written: #{filename}\n"
             written += 1
           rescue ex : Exception

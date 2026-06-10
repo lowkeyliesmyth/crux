@@ -29,18 +29,20 @@ jobs:
         with:
           crystal: "1.20.0"
 
-      # Ref: https://github.com/SimonKagstrom/kcov/blob/master/INSTALL.md
-      - name: Install kcov build dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install binutils-dev build-essential cmake libssl-dev libcurl4-openssl-dev libelf-dev libstdc++-12-dev zlib1g-dev libdw-dev libiberty-dev
-
       - name: Cache kcov binary
         id: cache-kcov
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: /usr/local/bin/kcov
           key: kcov-v43-${{ runner.os }}-${{ runner.arch }}
+
+      # Build dependencies are only needed to compile kcov, so skip them on a cache hit.
+      # Ref: https://github.com/SimonKagstrom/kcov/blob/master/INSTALL.md
+      - name: Install kcov build dependencies
+        if: steps.cache-kcov.outputs.cache-hit != 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install binutils-dev build-essential cmake libssl-dev libcurl4-openssl-dev libelf-dev libstdc++-12-dev zlib1g-dev libdw-dev libiberty-dev
 
       - name: Build and install kcov
         env:
@@ -56,12 +58,14 @@ jobs:
           sudo make install
 
       - name: Cache shards
+        id: cache-shards
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: lib
           key: shards-${{ runner.os }}-crystal-1.20.0-${{ hashFiles('shard.lock') }}
 
       - name: Install shards
+        if: steps.cache-shards.outputs.cache-hit != 'true'
         run: shards install
 
       # See reference: https://crystal-lang.org/reference/1.20/guides/testing/code_coverage.html
