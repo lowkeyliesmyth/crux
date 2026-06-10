@@ -21,6 +21,16 @@ VALID_MULTI_DOC = <<-YAML
     name: my-app
   YAML
 
+# Configmap with embedded double-quoted flow form YAML blob
+CONFIGMAP_MULTILINE_DOC = <<-YAML
+  apiVersion: v1
+  kind: ConfigMap
+  metadata:
+    name: shield-cluster
+  data:
+    cluster-shield.yaml: "cluster_config:\\n  name: foo\\n"
+  YAML
+
 MISSING_METADATA_DOC = <<-YAML
   apiVersion: apps/v1
   kind: Deployment
@@ -525,6 +535,27 @@ describe Crux::Commands::Ysplit::YsplitProcessor do
         processor = Crux::Commands::Ysplit::YsplitProcessor.new(temp_dir, "FOO")
         processor.process(VALID_SINGLE_DOC, out_io, err_io)
         File.exists?(Path.new(temp_dir, "FOO-my-app-deployment.yaml")).should be_true
+      end
+    end
+
+    context "with ConfigMap data normalization" do
+      it "writes ConfigMap multiline data as a literal block scalar" do
+        processor = Crux::Commands::Ysplit::YsplitProcessor.new(temp_dir)
+        result = processor.process(CONFIGMAP_MULTILINE_DOC, out_io, err_io)
+
+        result.should eq({written: 1, skipped: 0})
+        content = File.read(Path.new(temp_dir, "shield-cluster-configmap.yaml"))
+        content.should contain("cluster-shield.yaml: |")
+        content.should contain("cluster_config:")
+        content.should_not contain("\\n")
+      end
+
+      it "leaves non-ConfigMap output unchanges from stdlib to_yaml" do
+        processor = Crux::Commands::Ysplit::YsplitProcessor.new(temp_dir)
+        processor.process(VALID_SINGLE_DOC, out_io, err_io)
+
+        content = File.read(Path.new(temp_dir, "my-app-deployment.yaml"))
+        content.should eq(YAML.parse(VALID_SINGLE_DOC).to_yaml)
       end
     end
 
