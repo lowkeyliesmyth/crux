@@ -88,4 +88,34 @@ module Crux::Commands::ConfigMapOverrides
       raise ProcessorError.new("invalid override config file '#{path}': #{ex.message}")
     end
   end
+
+  # Orchestrates the per-cluster, per-override patch generation pipeline.
+  class Processor
+    # Matches outerPath on the form `data[<key>]` to capture the literal key being patched.
+    OUTER_PATH_PATTERN = /\Adata\[(.*)\]\z/
+
+    def initialize(@outdir : String)
+    end
+
+    # Extracts the literal data key from outerPath on the form `data[<key>]`.
+    #
+    # Raises on any other form.
+    def self.parse_outer_key(outer_path : String) : String
+      raise NotImplementedError.new("Processor.parse_outer_key")
+    end
+
+    # Splits an innerPath into dot-delimited segments.
+    #
+    # Raises on empty path or empty segments.
+    def self.parse_inner_path(inner_path : String) : Array(String)
+      raise NotImplementedError.new("Processor.parse_inner_path")
+    end
+
+    # Reads, validates, and applies an overrides cofnig, writing per-cluster Configmap patch files.
+    #
+    # Raises on any error.
+    def process(overrides_path : String, out_io : IO = STDOUT, err_io : IO = STDERR) : Nil
+      raise NotImplementedError.new("Processor.process")
+    end
+  end
 end
