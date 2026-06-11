@@ -28,7 +28,23 @@ module Crux::Commands::ConfigMapOverrides
     #
     # Raises on violations.
     def validate! : Nil
-      raise NotImplementedError.new("Patch#validate!")
+      if value && value_from
+        raise ProcessorError.new(
+          "patch (outerPath=#{outer_path}, innerPath=#{inner_path}) has both 'value' and 'valueFrom' set. Exactly one is required."
+        )
+      end
+
+      unless value || value_from
+        raise ProcessorError.new(
+          "patch (outerPath=#{outer_path}, innerPath=#{inner_path}) has neither 'value' nor 'valueFrom' set. Exactly one is required."
+        )
+      end
+
+      if (vf = value_from) && vf != SUPPORTED_VALUE_FROM
+        raise ProcessorError.new(
+          "unsupported valueFrom ref '#{vf}'. Only #{SUPPORTED_VALUE_FROM} is supported."
+        )
+      end
     end
   end
 
@@ -52,14 +68,24 @@ module Crux::Commands::ConfigMapOverrides
     #
     # Raises on the first violation found.
     def validate! : Nil
-      raise NotImplementedError.new("OverrideConfig#validate!")
+      overrides.each do |entry|
+        entry.patches.each do |patch|
+          patch.validate!
+        end
+      end
     end
 
     # Reads and parses an overrides file, then validates it.
     #
     # Raises on missing file or KYAML parsing errors.
     def self.load(path : String) : OverridesConfig
-      raise NotImplementedError.new("OverridesConfig.load")
+      raise ProcessorError.new("overrides file not found: #{path}") unless File.exists?(path)
+
+      config = from_kyaml(File.read(path))
+      config.validate!
+      config
+    rescue ex : KYAML::ParseError | YAML::ParseException
+      raise ProcessorError.new("invalid override config file '#{path}': #{ex.message}")
     end
   end
 end
