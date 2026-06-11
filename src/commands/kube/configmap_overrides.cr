@@ -92,7 +92,8 @@ module Crux::Commands::ConfigMapOverrides
   # Orchestrates the per-cluster, per-override patch generation pipeline.
   class Processor
     # Matches outerPath on the form `data[<key>]` to capture the literal key being patched.
-    OUTER_PATH_PATTERN = /\Adata\[(.*)\]\z/
+
+    OUTER_PATH_PATTERN = /\Adata\[([^\]]+)\]\z/
 
     def initialize(@outdir : String)
     end
@@ -101,14 +102,22 @@ module Crux::Commands::ConfigMapOverrides
     #
     # Raises on any other form.
     def self.parse_outer_key(outer_path : String) : String
-      raise NotImplementedError.new("Processor.parse_outer_key")
+      match = OUTER_PATH_PATTERN.match(outer_path)
+      unless match
+        raise ProcessorError.new("expected form 'data[<key>]', invalid outerPath '#{outer_path}'")
+      end
+      match[1]
     end
 
     # Splits an innerPath into dot-delimited segments.
     #
     # Raises on empty path or empty segments.
     def self.parse_inner_path(inner_path : String) : Array(String)
-      raise NotImplementedError.new("Processor.parse_inner_path")
+      segments = inner_path.split('.')
+      if inner_path.empty? || segments.any?(&.empty?)
+        raise ProcessorError.new("expected dot-separated keys, invalid innerPath '#{inner_path}'")
+      end
+      segments
     end
 
     # Reads, validates, and applies an overrides cofnig, writing per-cluster Configmap patch files.
