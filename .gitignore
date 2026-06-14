@@ -2,6 +2,7 @@
 /docs/
 /lib/
 /bin/
+/.lattice-cache/
 /.shards/
 /all_specs.cr
 *.dwarf
