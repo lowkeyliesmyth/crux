@@ -1,5 +1,5 @@
 # yaml-language-server: $schema=https://taskfile.dev/schema.json
-version: '3'
+version: "3"
 
 tasks:
   spec:
@@ -22,7 +22,11 @@ tasks:
     cmds:
       - actionlint
 
+  build:
+    desc: Build the crux binary
+    cmds:
+      - crystal build src/main.cr -o bin/crux
+
   default:
     desc: Run default spec-lint checks
     deps: [spec, lint]
-
