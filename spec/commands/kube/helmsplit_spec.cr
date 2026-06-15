@@ -15,6 +15,10 @@ class TestableHelmsplit < Crux::Commands::Helmsplit
   def test_sanitize_rendered(rendered : String) : String
     sanitize_rendered(rendered)
   end
+
+  def test_write_provenance(outdir : String, chart : String, version : String?, values : Array(String), prefix : String?, overrides : String?)
+    write_provenance(outdir, chart, version, values, prefix, overrides)
+  end
 end
 
 # Mock Helm collaborator implementation for testing
@@ -198,6 +202,30 @@ describe Crux::Commands::Helmsplit do
         # pass 2 removes 'helm' and drops the whole line
         subject.test_sanitize_rendered("  name: release-name-helm-app\nkeep: me\n")
           .should eq("keep: me\n")
+      end
+    end
+  end
+
+  describe "#write_provenance" do
+    it "records the -o overrides flag when present" do
+      tmpdir = File.join(Dir.tempdir, "helsplit_prov_#{Time.utc.to_unix_ms}")
+      Dir.mkdir_p(tmpdir)
+      begin
+        TestableHelmsplit.new.test_write_provenance(tmpdir, "repo/chart", nil, [] of String, nil, "overrides.kyaml")
+        File.read(File.join(tmpdir, "_PROVENANCE.md")).should contain("-o overrides.kyaml")
+      ensure
+        FileUtils.rm_rf(tmpdir)
+      end
+    end
+
+    it "omits the -o flag when absent" do
+      tmpdir = File.join(Dir.tempdir, "helmsplit_prov_#{Time.utc.to_unix_ms}")
+      Dir.mkdir_p(tmpdir)
+      begin
+        TestableHelmsplit.new.test_write_provenance(tmpdir, "repo/chart", nil, [] of String, nil, nil)
+        File.read(File.join(tmpdir, "_PROVENANCE.md")).should_not contain("-o")
+      ensure
+        FileUtils.rm_rf(tmpdir)
       end
     end
   end

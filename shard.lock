@@ -8,6 +8,10 @@ shards:
     git: https://github.com/devnote-dev/cling.git
     version: 3.1.0+git.commit.e23db4aa04ce4727a1e3f699088c114a1930c3e7
 
+  kyaml:
+    git: https://github.com/lowkeyliesmyth/kyaml.git
+    version: 0.3.0+git.commit.72ded711af046021b909810c3a8f63bcdd7df432
+
   webmock:
     git: https://github.com/manastech/webmock.cr.git
     version: 0.14.0+git.commit.fde6b20d5b80401a967e044b1a3e80ee391bed60
