@@ -54,12 +54,14 @@ module Crux::Commands
       add_usage ""
       add_usage "EXAMPLES"
       add_usage "crux kube helmsplit . jetstack/cert-manager -v 1.20"
+      add_usage "crux kube helmsplit . jetstack/cert-manager -v 1.20 -o overrides.kyaml"
       add_usage "crux kube helmsplit . jetstack/cert-manager -v 1.20 -f base.yaml -f prod.yaml -p cm"
 
       add_argument "outdir", description: "path to save generated output files", required: true
       add_argument "chart", description: "chart reference (repo/chart), or path to local chart", required: true
 
       add_option 'f', "file", description: "path to values file passed through to helm", type: :multiple, default: [] of String
+      add_option 'o', "overrides", description: "path to overrides.kyaml config file", type: :single
       add_option 'p', "prefix", description: "custom prefix added to each output filename", type: :single
       add_option 'v', "version", description: "helm chart version to use", type: :single
     end
@@ -79,6 +81,7 @@ module Crux::Commands
       prefix = options.get?("prefix").try(&.as_s?)
       version = options.get?("version").try(&.as_s?)
       values = options.get?("file").try(&.as_a) || [] of String
+      overrides = options.get?("overrides").try(&.as_s?)
 
       rendered = render_chart(chart, version, values)
       rendered = sanitize_rendered(rendered)
@@ -87,7 +90,11 @@ module Crux::Commands
       result = processor.process(rendered, stdout, stderr)
 
       # Re-compute chart value so we don't leak the resolved path
-      write_provenance(outdir, arguments.get("chart").as_s, version, values, prefix)
+      write_provenance(outdir, arguments.get("chart").as_s, version, values, prefix, overrides)
+
+      if overrides
+        ConfigMapOverrides::Processor.new(outdir).process(overrides, stdout, stderr)
+      end
 
       count_label = result[:written] == 1 ? "1 file" : "#{result[:written]} files"
       info "#{"Complete:".colorize.bold.green} #{count_label} written, #{result[:skipped]} skipped."
@@ -95,18 +102,23 @@ module Crux::Commands
       error "#{"Helm Error:".colorize.bold}"
       error "\t#{ex.message}"
       exit_program 1
+    rescue ex : ConfigMapOverrides::ProcessorError
+      error "#{"Overrides error:".colorize.bold}"
+      error "\t#{ex.message}"
+      exit_program 1
     end
 
     def post_run(arguments : Cling::Arguments, options : Cling::Options) : Nil
     end
 
+    # Delegates to the Helm collaborator to render the chart and return the raw YAML output.
     private def render_chart(chart : String, version : String?, values : Array(String)) : String
       @helm.template(chart, version, values)
     end
 
     # Returns the chart reference to pass to helm as either an expanded local path or the original 'repo/chart' string.
     # Increases confidence that the user-submitted string is a valid local chart path before deferring to remote resolution.
-    # Used to reduce confusing errors or misinterpretations between chart path vs 'repo/chart' collisions
+    # Used to reduce confusing errors or misinterpretations between chart path vs 'repo/chart' collisions.
     private def resolve_chart(chart : String) : String
       looks_local = chart.starts_with?('.') || chart.starts_with?('/') || chart.starts_with?('~')
       expanded = File.expand_path(chart)
@@ -141,11 +153,13 @@ module Crux::Commands
       "release-name",
     ]
 
+    # Sanitizes raw helm-rendered YAML by stripping noise tokens and dropping unwanted lines.
+    #
     # Applies two passes, in order:
     #   1. Strip every YAML_PRUNE_SUBSTRINGS token from the body of YAML output
     #   2. Drop any line containing any YAML_DROP_LINE_TOKENS token
     #
-    # Returns sanitized YAML output
+    # Returns sanitized YAML output.
     private def sanitize_rendered(rendered : String) : String
       pruned = YAML_PRUNE_SUBSTRINGS.reduce(rendered) { |acc, substr| acc.gsub(substr, "") }
       pruned.split('\n').reject do |line|
@@ -155,13 +169,16 @@ module Crux::Commands
       end.join('\n')
     end
 
-    private def write_provenance(outdir : String, chart : String, version : String?, values : Array(String), prefix : String?)
+    # Writes a `_PROVENANCE.md` file to `outdir` recording the exact crux command signature invoked to generate its contents.
+    private def write_provenance(outdir : String, chart : String, version : String?, values : Array(String), prefix : String?, overrides : String?)
       parts = ["crux kube helmsplit", outdir, chart]
       parts << "-v #{version}" if version
+
       values.each do |v|
         parts << "-f #{v}"
       end
       parts << "-p #{prefix}" if prefix
+      parts << "-o #{overrides}" if overrides
       command = parts.join(' ')
 
       content = <<-MD
