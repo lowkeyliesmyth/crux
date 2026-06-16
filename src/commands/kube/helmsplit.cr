@@ -86,7 +86,7 @@ module Crux::Commands
       rendered = render_chart(chart, version, values)
       rendered = sanitize_rendered(rendered)
 
-      processor = Ysplit::YsplitProcessor.new(outdir, prefix)
+      processor = Crux::Kube::ManifestSplitter.new(outdir, prefix)
       result = processor.process(rendered, stdout, stderr)
 
       # Re-compute chart value so we don't leak the resolved path
