@@ -8,40 +8,7 @@ module Crux::Commands
   class Ysplit < Kube
     # Base domain exception
     class YsplitError < Exception
-    end
-
-    # Just use standard YAML::ParseException when YAML parsing fails.
-
-    # Represents the minimum required Kubernetes document YAML manifest with apiVersion, kind, and metadata.name.
-    struct K8sDoc
-      include YAML::Serializable
-
-      # ameba:disable Naming/VariableNames
-      getter apiVersion : String?
-      getter kind : String?
-      getter metadata : Metadata?
-
-      struct Metadata
-        include YAML::Serializable
-        getter name : String?
-      end
-
-      # Returns `true` if the doc meets the minimum required fields for a valid K8s object
-      def valid? : Bool
-        !apiVersion.nil? && !kind.nil? && !metadata.try(&.name).nil?
-      end
-
-      # Returns `metadata.name`. Only safe to call after `valid?` returns true.
-      def resource_name : String
-        # ameba:disable Lint/NotNil
-        metadata.not_nil!.name.not_nil!
-      end
-
-      # Returns `kind`. Only safe to call after `valid?` returns true.
-      def resource_kind : String
-        # ameba:disable Lint/NotNil
-        kind.not_nil!
-      end
+      # Just use standard YAML::ParseException when YAML parsing fails.
     end
 
     # Encapsulates the core YAML splitting logic, separated from the CLI command class so it can be tested independently.
@@ -91,7 +58,7 @@ module Crux::Commands
           # Null docs occur from bare --- separators
           # Silently skip them.
           next if doc.raw.nil?
-          k8s_doc = K8sDoc.from_yaml(doc.to_yaml)
+          k8s_doc = Crux::Kube::K8sDoc.from_yaml(doc.to_yaml)
 
           unless k8s_doc.valid?
             err_io.puts "Document #{i + 1} is invalid."
