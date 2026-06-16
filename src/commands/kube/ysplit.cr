@@ -1,8 +1,6 @@
-require "file_utils"
 require "http/client"
 require "socket"
 require "uri"
-require "yaml"
 
 module Crux::Commands
   class Ysplit < Kube
