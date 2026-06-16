@@ -86,14 +86,14 @@ module Crux::Commands
       rendered = render_chart(chart, version, values)
       rendered = sanitize_rendered(rendered)
 
-      processor = Ysplit::YsplitProcessor.new(outdir, prefix)
+      processor = Crux::Kube::ManifestSplitter.new(outdir, prefix)
       result = processor.process(rendered, stdout, stderr)
 
       # Re-compute chart value so we don't leak the resolved path
       write_provenance(outdir, arguments.get("chart").as_s, version, values, prefix, overrides)
 
       if overrides
-        ConfigMapOverrides::Processor.new(outdir).process(overrides, stdout, stderr)
+        Crux::Kube::ConfigMapOverrides::Processor.new(outdir).process(overrides, stdout, stderr)
       end
 
       count_label = result[:written] == 1 ? "1 file" : "#{result[:written]} files"
@@ -102,7 +102,7 @@ module Crux::Commands
       error "#{"Helm Error:".colorize.bold}"
       error "\t#{ex.message}"
       exit_program 1
-    rescue ex : ConfigMapOverrides::ProcessorError
+    rescue ex : Crux::Kube::ConfigMapOverrides::ProcessorError
       error "#{"Overrides error:".colorize.bold}"
       error "\t#{ex.message}"
       exit_program 1

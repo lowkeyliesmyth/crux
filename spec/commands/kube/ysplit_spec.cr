@@ -423,62 +423,62 @@ describe Crux::Commands::Ysplit do
   end
 end
 
-describe Crux::Commands::Ysplit::K8sDoc do
+describe Crux::Kube::K8sDoc do
   describe "#valid?" do
     it "returns true when apiVersion, kind, metadata.name are present" do
-      doc = Crux::Commands::Ysplit::K8sDoc.from_yaml(VALID_SINGLE_DOC)
+      doc = Crux::Kube::K8sDoc.from_yaml(VALID_SINGLE_DOC)
       doc.valid?.should be_true
     end
 
     it "returns false when kind is missing" do
-      doc = Crux::Commands::Ysplit::K8sDoc.from_yaml(MISSING_KIND_DOC)
+      doc = Crux::Kube::K8sDoc.from_yaml(MISSING_KIND_DOC)
       doc.valid?.should be_false
     end
 
     it "returns false when metadata is missing" do
-      doc = Crux::Commands::Ysplit::K8sDoc.from_yaml(MISSING_METADATA_DOC)
+      doc = Crux::Kube::K8sDoc.from_yaml(MISSING_METADATA_DOC)
       doc.valid?.should be_false
     end
 
     it "returns false when metadata.name is missing" do
-      doc = Crux::Commands::Ysplit::K8sDoc.from_yaml(MISSING_NAME_DOC)
+      doc = Crux::Kube::K8sDoc.from_yaml(MISSING_NAME_DOC)
       doc.valid?.should be_false
     end
 
     it "returns false when metadata.name is null" do
-      doc = Crux::Commands::Ysplit::K8sDoc.from_yaml(NULL_NAME_DOC)
+      doc = Crux::Kube::K8sDoc.from_yaml(NULL_NAME_DOC)
       doc.valid?.should be_false
     end
 
     it "returns false when metadata is missing" do
-      doc = Crux::Commands::Ysplit::K8sDoc.from_yaml(MISSING_METADATA_DOC)
+      doc = Crux::Kube::K8sDoc.from_yaml(MISSING_METADATA_DOC)
       doc.valid?.should be_false
     end
   end
 end
 
-describe Crux::Commands::Ysplit::YsplitProcessor do
+describe Crux::Kube::ManifestSplitter do
   describe "#build_filename" do
     it "produces <outdir>/<name>-<kind>.yaml without a prefix" do
-      processor = Crux::Commands::Ysplit::YsplitProcessor.new("/tmp/out")
+      processor = Crux::Kube::ManifestSplitter.new("/tmp/out")
       result = processor.build_filename("my-app", "deployment")
       result.should eq Path.new("/tmp/out", "my-app-deployment.yaml")
     end
 
     it "produces <outdir>/<prefix>-<name>-<kind>.yaml with a prefix" do
-      processor = Crux::Commands::Ysplit::YsplitProcessor.new("/tmp/out", "myprefix")
+      processor = Crux::Kube::ManifestSplitter.new("/tmp/out", "myprefix")
       result = processor.build_filename("my-app", "deployment")
       result.should eq Path.new("/tmp/out", "myprefix-my-app-deployment.yaml")
     end
 
     it "downcases the filename when no prefix is provided" do
-      processor = Crux::Commands::Ysplit::YsplitProcessor.new("/tmp/out")
+      processor = Crux::Kube::ManifestSplitter.new("/tmp/out")
       result = processor.build_filename("My-App", "deployment")
       result.should eq Path.new("/tmp/out", "my-app-deployment.yaml")
     end
 
     it "respects user-provided casing for filename prefix" do
-      processor = Crux::Commands::Ysplit::YsplitProcessor.new("/tmp/out", "MyPrefix")
+      processor = Crux::Kube::ManifestSplitter.new("/tmp/out", "MyPrefix")
       result = processor.build_filename("my-app", "deployment")
       result.should eq Path.new("/tmp/out", "MyPrefix-my-app-deployment.yaml")
     end
@@ -502,14 +502,14 @@ describe Crux::Commands::Ysplit::YsplitProcessor do
 
     context "with valid YAML" do
       it "writes a single doc and returns 'written: 1, skipped: 0'" do
-        processor = Crux::Commands::Ysplit::YsplitProcessor.new(temp_dir)
+        processor = Crux::Kube::ManifestSplitter.new(temp_dir)
         result = processor.process(VALID_SINGLE_DOC, out_io, err_io)
         result.should eq({written: 1, skipped: 0})
         File.exists?(Path.new(temp_dir, "my-app-deployment.yaml")).should be_true
       end
 
       it "writes one file per doc for multi-doc YAML" do
-        processor = Crux::Commands::Ysplit::YsplitProcessor.new(temp_dir)
+        processor = Crux::Kube::ManifestSplitter.new(temp_dir)
         result = processor.process(VALID_MULTI_DOC, out_io, err_io)
         result[:written].should eq(2)
         result[:skipped].should eq(0)
@@ -518,7 +518,7 @@ describe Crux::Commands::Ysplit::YsplitProcessor do
       end
 
       it "writes correct YAML content into the output file" do
-        processor = Crux::Commands::Ysplit::YsplitProcessor.new(temp_dir)
+        processor = Crux::Kube::ManifestSplitter.new(temp_dir)
         processor.process(VALID_SINGLE_DOC, out_io, err_io)
         content = File.read(Path.new(temp_dir, "my-app-deployment.yaml"))
         content.should contain("apiVersion: apps/v1")
@@ -527,12 +527,12 @@ describe Crux::Commands::Ysplit::YsplitProcessor do
       end
 
       it "writes confirmation line to out_io for each file written" do
-        processor = Crux::Commands::Ysplit::YsplitProcessor.new(temp_dir)
+        processor = Crux::Kube::ManifestSplitter.new(temp_dir)
         processor.process(VALID_SINGLE_DOC, out_io, err_io)
         out_io.to_s.should contain("Written:")
       end
       it "applies the prefix to output filenames" do
-        processor = Crux::Commands::Ysplit::YsplitProcessor.new(temp_dir, "FOO")
+        processor = Crux::Kube::ManifestSplitter.new(temp_dir, "FOO")
         processor.process(VALID_SINGLE_DOC, out_io, err_io)
         File.exists?(Path.new(temp_dir, "FOO-my-app-deployment.yaml")).should be_true
       end
@@ -540,7 +540,7 @@ describe Crux::Commands::Ysplit::YsplitProcessor do
 
     context "with ConfigMap data normalization" do
       it "writes ConfigMap multiline data as a literal block scalar" do
-        processor = Crux::Commands::Ysplit::YsplitProcessor.new(temp_dir)
+        processor = Crux::Kube::ManifestSplitter.new(temp_dir)
         result = processor.process(CONFIGMAP_MULTILINE_DOC, out_io, err_io)
 
         result.should eq({written: 1, skipped: 0})
@@ -551,7 +551,7 @@ describe Crux::Commands::Ysplit::YsplitProcessor do
       end
 
       it "leaves non-ConfigMap output unchanges from stdlib to_yaml" do
-        processor = Crux::Commands::Ysplit::YsplitProcessor.new(temp_dir)
+        processor = Crux::Kube::ManifestSplitter.new(temp_dir)
         processor.process(VALID_SINGLE_DOC, out_io, err_io)
 
         content = File.read(Path.new(temp_dir, "my-app-deployment.yaml"))
@@ -561,19 +561,19 @@ describe Crux::Commands::Ysplit::YsplitProcessor do
 
     context "with edge-case YAML and input" do
       it "silently skips bare --- separators" do
-        processor = Crux::Commands::Ysplit::YsplitProcessor.new(temp_dir)
+        processor = Crux::Kube::ManifestSplitter.new(temp_dir)
         result = processor.process("---\n---\n---", out_io, err_io)
         result[:written].should eq(0)
         result[:skipped].should eq(0)
       end
       it "returns 'written: 0, skipped: 0' for empty input" do
-        processor = Crux::Commands::Ysplit::YsplitProcessor.new(temp_dir)
+        processor = Crux::Kube::ManifestSplitter.new(temp_dir)
         result = processor.process("", out_io, err_io)
         result[:written].should eq(0)
         result[:skipped].should eq(0)
       end
       it "writes valid docs and skips invalid ones" do
-        processor = Crux::Commands::Ysplit::YsplitProcessor.new(temp_dir)
+        processor = Crux::Kube::ManifestSplitter.new(temp_dir)
         result = processor.process(MIXED_DOC, out_io, err_io)
         result[:written].should eq(1)
         result[:skipped].should eq(1)
@@ -582,28 +582,28 @@ describe Crux::Commands::Ysplit::YsplitProcessor do
 
     context "with invalid YAML" do
       it "skips doc missing 'kind' and emits warning to err_io" do
-        processor = Crux::Commands::Ysplit::YsplitProcessor.new(temp_dir)
+        processor = Crux::Kube::ManifestSplitter.new(temp_dir)
         result = processor.process(MISSING_KIND_DOC, out_io, err_io)
         result[:written].should eq(0)
         result[:skipped].should eq(1)
         err_io.to_s.should contain("Missing required")
       end
       it "skips doc missing 'metadata.name' and emits warning to err_io" do
-        processor = Crux::Commands::Ysplit::YsplitProcessor.new(temp_dir)
+        processor = Crux::Kube::ManifestSplitter.new(temp_dir)
         result = processor.process(MISSING_NAME_DOC, out_io, err_io)
         result[:written].should eq(0)
         result[:skipped].should eq(1)
         err_io.to_s.should contain("Missing required")
       end
       it "skips doc with null name and emits warning to err_io" do
-        processor = Crux::Commands::Ysplit::YsplitProcessor.new(temp_dir)
+        processor = Crux::Kube::ManifestSplitter.new(temp_dir)
         result = processor.process(NULL_NAME_DOC, out_io, err_io)
         result[:written].should eq(0)
         result[:skipped].should eq(1)
         err_io.to_s.should contain("Missing required")
       end
       it "raises YAML::ParseException for malformed YAML input" do
-        processor = Crux::Commands::Ysplit::YsplitProcessor.new(temp_dir)
+        processor = Crux::Kube::ManifestSplitter.new(temp_dir)
         expect_raises(YAML::ParseException) do
           processor.process(MALFORMED_YAML, out_io, err_io)
         end
@@ -612,7 +612,7 @@ describe Crux::Commands::Ysplit::YsplitProcessor do
 
     context "with unsafe metadata.name" do
       it "skips a doc whose name contains '..' and writes nothing" do
-        processor = Crux::Commands::Ysplit::YsplitProcessor.new(temp_dir)
+        processor = Crux::Kube::ManifestSplitter.new(temp_dir)
         result = processor.process(TRAVERSAL_NAME_DOC, out_io, err_io)
         result[:written].should eq(0)
         result[:skipped].should eq(1)
@@ -621,7 +621,7 @@ describe Crux::Commands::Ysplit::YsplitProcessor do
       end
 
       it "skips a doc whose name contains '/'" do
-        processor = Crux::Commands::Ysplit::YsplitProcessor.new(temp_dir)
+        processor = Crux::Kube::ManifestSplitter.new(temp_dir)
         result = processor.process(SLASH_NAME_DOC, out_io, err_io)
         result[:written].should eq(0)
         result[:skipped].should eq(1)
@@ -629,7 +629,7 @@ describe Crux::Commands::Ysplit::YsplitProcessor do
       end
 
       it "skips a doc whose name contains '\\'" do
-        processor = Crux::Commands::Ysplit::YsplitProcessor.new(temp_dir)
+        processor = Crux::Kube::ManifestSplitter.new(temp_dir)
         result = processor.process(BACKSLASH_NAME_DOC, out_io, err_io)
         result[:written].should eq(0)
         result[:skipped].should eq(1)
@@ -637,7 +637,7 @@ describe Crux::Commands::Ysplit::YsplitProcessor do
       end
 
       it "skips a doc whose name contains  NUL byte" do
-        processor = Crux::Commands::Ysplit::YsplitProcessor.new(temp_dir)
+        processor = Crux::Kube::ManifestSplitter.new(temp_dir)
         result = processor.process(NUL_NAME_DOC, out_io, err_io)
         result[:written].should eq(0)
         result[:skipped].should eq(1)
@@ -645,7 +645,7 @@ describe Crux::Commands::Ysplit::YsplitProcessor do
       end
 
       it "skips a doc whose name has a leading dot" do
-        processor = Crux::Commands::Ysplit::YsplitProcessor.new(temp_dir)
+        processor = Crux::Kube::ManifestSplitter.new(temp_dir)
         result = processor.process(LEADING_DOT_NAME_DOC, out_io, err_io)
         result[:written].should eq(0)
         result[:skipped].should eq(1)
@@ -653,9 +653,9 @@ describe Crux::Commands::Ysplit::YsplitProcessor do
       end
 
       it "skips a doc whose name exceeds 253 chars" do
-        overlong = "a" * (Crux::Commands::Ysplit::YsplitProcessor::RFC_1123_MAX_LENGTH + 1)
+        overlong = "a" * (Crux::Kube::ManifestSplitter::RFC_1123_MAX_LENGTH + 1)
         yaml = "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: #{overlong}\n"
-        processor = Crux::Commands::Ysplit::YsplitProcessor.new(temp_dir)
+        processor = Crux::Kube::ManifestSplitter.new(temp_dir)
         result = processor.process(yaml, out_io, err_io)
         result[:written].should eq(0)
         result[:skipped].should eq(1)
@@ -669,7 +669,7 @@ describe Crux::Commands::Ysplit::YsplitProcessor do
           metadata:
             name: my.app-1.example.net.com
         YAML
-        processor = Crux::Commands::Ysplit::YsplitProcessor.new(temp_dir)
+        processor = Crux::Kube::ManifestSplitter.new(temp_dir)
         result = processor.process(yaml, out_io, err_io)
         result[:written].should eq(1)
         result[:skipped].should eq(0)
@@ -680,7 +680,7 @@ describe Crux::Commands::Ysplit::YsplitProcessor do
     context "when output dir is not writable" do
       it "counts doc as skipped and emits warning to err_io" do
         Dir.mkdir_p(temp_dir, 555)
-        processor = Crux::Commands::Ysplit::YsplitProcessor.new(temp_dir)
+        processor = Crux::Kube::ManifestSplitter.new(temp_dir)
         result = processor.process(VALID_SINGLE_DOC, out_io, err_io)
         result[:written].should eq(0)
         result[:skipped].should eq(1)

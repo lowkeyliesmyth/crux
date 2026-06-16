@@ -1,7 +1,7 @@
 require "kyaml"
 require "yaml"
 
-module Crux::Commands::ConfigMapOverrides
+module Crux::Kube::ConfigMapOverrides
   class ProcessorError < Exception
   end
 

@@ -1,4 +1,4 @@
-require "../../spec_helper"
+require "../spec_helper"
 require "file_utils"
 # Concrete reference source ConfigMap with nested yaml that needs to be overridden, based off of the sysdig shield chart (https://charts.sysdig.com/charts/shield/) as the source.
 # apiVersion: v1
@@ -42,7 +42,7 @@ require "file_utils"
 # }
 
 # This fully qualified class name is brutal. Make it suck less.
-alias CMO = Crux::Commands::ConfigMapOverrides
+alias CMO = Crux::Kube::ConfigMapOverrides
 
 # Builds a one-patch overrides doc template wrapper around a provided patch body
 private def overrides_doc(patch : String) : String
@@ -146,7 +146,7 @@ describe CMO::OverridesConfig do
   end
 end
 
-describe Crux::Commands::ConfigMapOverrides::Processor do
+describe Crux::Kube::ConfigMapOverrides::Processor do
   describe "#parse_outer_key" do
     it "extracts the literal data key from data[<key>]" do
       CMO::Processor.parse_outer_key("data[cluster-shield.yaml]").should eq("cluster-shield.yaml")

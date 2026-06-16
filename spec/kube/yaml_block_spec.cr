@@ -1,4 +1,4 @@
-require "../../spec_helper"
+require "../spec_helper"
 
 describe Crux::Kube::YamlBlock do
   describe "#emit" do
