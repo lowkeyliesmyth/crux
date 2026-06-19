@@ -7,7 +7,7 @@ require "file_utils"
 # toplevel (rev-parse), staged-change detection (diff), and the commit itself.
 private def run_commit(repo_root : String, script : String, git : FakeGit) : String
   git.stub("rev-parse", ok_result(repo_root)) # toplevel lookup
-  git.stub("diff", fail_result)                # non-zero => staged changes exist
+  git.stub("diff", fail_result)               # non-zero => staged changes exist
   git.stub("commit", ok_result)
 
   cmd = Crux::Commands::Commit.new(git)

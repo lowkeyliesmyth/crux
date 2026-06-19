@@ -28,7 +28,7 @@ module Crux::Git
     getter subject : String
     getter body : String?
     getter ticket : String?
-    getter breaking : Bool
+    getter? breaking : Bool
     getter breaking_description : String?
 
     def initialize(
@@ -72,7 +72,7 @@ module Crux::Git
         if s = scope
           io << '(' << s << ')' unless s.empty?
         end
-        io << '!' if breaking
+        io << '!' if breaking?
         io << ": "
         if t = ticket
           io << t << ' ' unless t.empty?
@@ -91,7 +91,7 @@ module Crux::Git
           io << "\n\n" << stripped unless stripped.empty?
         end
 
-        if breaking
+        if breaking?
           description = breaking_description.try(&.strip)
           detail = description && !description.empty? ? description : subject.strip
           io << "\n\n" << "BREAKING CHANGE: " << detail

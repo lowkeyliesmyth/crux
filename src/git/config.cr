@@ -149,7 +149,7 @@ module Crux::Git
     include KYAML::Serializable
 
     # Whether a ticket reference must be supplied for every commit.
-    getter required : Bool = false
+    getter? required : Bool = false
 
     # Optional regex the ticket must match (e.g. "[A-Z]+-\\d+").
     getter pattern : String?
@@ -204,7 +204,7 @@ module Crux::Git
 
     # Returns true when a ticket reference is mandatory for this repository.
     def ticket_required? : Bool
-      !!ticket.try(&.required)
+      !!ticket.try(&.required?)
     end
   end
 end
