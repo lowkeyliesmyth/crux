@@ -8,6 +8,7 @@ require "./commands/*"
 require "./commands/kube/*"
 require "./commands/git/*"
 require "./commands/git/batch/*"
+require "./commands/git/profile/*"
 require "./kube/*"
 require "./git/*"
 

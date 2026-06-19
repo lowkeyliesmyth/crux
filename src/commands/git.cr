@@ -13,6 +13,7 @@ module Crux::Commands
       add_usage "crux git [subcommand] [arguments] [options]"
 
       add_command Commands::Commit.new
+      add_command Commands::Profile.new
       add_command Commands::Batch.new
     end
 

@@ -36,6 +36,9 @@ module Crux::Git
 
     getter name : String
     getter email : String
+
+    def initialize(@name : String, @email : String)
+    end
   end
 
   # A single git profile: the per-context identity a machine uses to talk to a
@@ -56,6 +59,15 @@ module Crux::Git
 
     getter user : Identity?
 
+    def initialize(
+      @name : String,
+      @ssh_key : String? = nil,
+      @ssh_host_alias : String? = nil,
+      @signing_key : String? = nil,
+      @user : Identity? = nil,
+    )
+    end
+
     # Builds the environment overrides git should run with for this profile.
     #
     # When the profile declares an ssh key, GIT_SSH_COMMAND pins transport to
@@ -65,7 +77,7 @@ module Crux::Git
       key = ssh_key
       return nil unless key
 
-      expanded = File.expand_path(key)
+      expanded = File.expand_path(key, home: true)
       {"GIT_SSH_COMMAND" => "ssh -i #{expanded} -o IdentitiesOnly=yes"}
     end
   end
@@ -75,6 +87,9 @@ module Crux::Git
     include KYAML::Serializable
 
     getter profiles : Array(Profile)
+
+    def initialize(@profiles : Array(Profile) = [] of Profile)
+    end
 
     # Loads and parses the profiles file at `path`.
     #
@@ -136,7 +151,7 @@ module Crux::Git
 
     # Expands the configured root to an absolute path (resolving ~ and relatives).
     def expanded_root : String
-      File.expand_path(root)
+      File.expand_path(root, home: true)
     end
   end
 

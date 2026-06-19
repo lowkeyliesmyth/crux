@@ -1,5 +1,7 @@
 module Crux::Commands
   class Commit < Git
+    include Prompt
+
     property git : Crux::Git::Runner
 
     # Accepts an injectable runner so tests can drive the flow with a fake git
@@ -188,21 +190,6 @@ module Crux::Commands
       return {false, nil} unless confirm?("Is this a breaking change?", default: false)
       description = ask("Describe the breaking change (optional)")
       {true, description.empty? ? nil : description}
-    end
-
-    # Writes a prompt label and returns the trimmed user response (or "" on EOF).
-    private def ask(label : String) : String
-      stdout << label.colorize.cyan << ": "
-      (stdin.gets || "").strip
-    end
-
-    # Yes/no prompt. Returns `default` on an empty answer or EOF.
-    private def confirm?(label : String, default : Bool = true) : Bool
-      hint = default ? "Y/n" : "y/N"
-      stdout << label.colorize.cyan << " [#{hint}]: "
-      answer = (stdin.gets || "").strip.downcase
-      return default if answer.empty?
-      answer.starts_with?('y')
     end
   end
 end
