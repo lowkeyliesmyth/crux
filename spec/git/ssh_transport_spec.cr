@@ -3,6 +3,7 @@ require "file_utils"
 require "../../src/git/client"
 require "./support/pack_builder"
 require "./support/fake_session"
+require "./support/fake_receive_pack"
 require "./support/repo_fixture"
 
 private CAPS = "side-band-64k ofs-delta no-progress symref=HEAD:refs/heads/main agent=git/2.40"
@@ -63,6 +64,42 @@ describe Git::SSHTransport do
       argv.should contain("2222")
       argv.should contain("git@example.com")
       argv.should contain("git-upload-pack '/team/repo.git'")
+    ensure
+      FileUtils.rm_rf(dir) if Dir.exists?(dir)
+      File.delete(response_path) if File.exists?(response_path)
+      File.delete(args_path) if File.exists?(args_path)
+      File.delete(ssh) if File.exists?(ssh)
+    end
+  end
+
+  it "pushes through the real subprocess transport" do
+    dir = File.tempname("crux-ssh-push", "")
+    response_path = File.tempname("rp-response", ".bin")
+    args_path = File.tempname("rp-args", ".txt")
+    ssh = fake_ssh(response_path, args_path)
+    begin
+      repo = Git::Repository.init(dir)
+      blob = Git::Object.new(Git::ObjectType::Blob, "pushed via ssh\n".to_slice)
+      repo.store.write(blob)
+      tree = Git::Object.new(Git::ObjectType::Tree,
+        RepoFixture.tree([{Git::TreeEntry::MODE_FILE, "file.txt", blob.oid}]))
+      repo.store.write(tree)
+      commit = Git::Object.new(Git::ObjectType::Commit, RepoFixture.commit(tree.oid, "push"))
+      repo.store.write(commit)
+      repo.write_ref("refs/heads/main", commit.oid)
+
+      rp_caps = "report-status delete-refs ofs-delta agent=git/2.40"
+      File.write(response_path, FakeReceivePack.build(
+        Array({String, String}).new, rp_caps, {"refs/heads/main" => nil}))
+
+      url = Git::URL.parse("ssh://git@example.com:2222/team/repo.git")
+      transport = Git::SSHTransport.new(url, ssh_command: ssh)
+
+      report = Git::Client.new(transport, url).push_branch(repo, "main")
+      report.ok?.should be_true
+
+      argv = File.read(args_path)
+      argv.should contain("git-receive-pack '/team/repo.git'")
     ensure
       FileUtils.rm_rf(dir) if Dir.exists?(dir)
       File.delete(response_path) if File.exists?(response_path)

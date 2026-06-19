@@ -5,6 +5,8 @@ require "./protocol"
 require "./pack"
 require "./repository"
 require "./advertisement"
+require "./object_walker"
+require "./receive_pack"
 
 module Git
   # High-level porcelain: clone a remote, or fetch/pull into an existing local
@@ -21,6 +23,32 @@ module Git
     record FetchResult,
       updated : Hash(String, String),
       objects_written : Int32
+
+    # A requested ref update for push. `src` is the local ref to take the new
+    # tip from (nil to delete the remote ref); `dst` is the remote ref to
+    # update; `force` permits a non-fast-forward update.
+    struct RefUpdate
+      getter src : String?
+      getter dst : String
+      getter? force : Bool
+
+      protected def initialize(@src : String?, @dst : String, @force : Bool)
+      end
+
+      # Updates `dst` (default: same as `src`) to the tip of local ref `src`.
+      def self.update(src : String, dst : String = src, force : Bool = false) : RefUpdate
+        new(src, dst, force)
+      end
+
+      # Deletes the remote ref `dst`.
+      def self.delete(dst : String) : RefUpdate
+        new(nil, dst, false)
+      end
+
+      def delete? : Bool
+        @src.nil?
+      end
+    end
 
     getter url : URL
     property remote_name : String
@@ -129,6 +157,100 @@ module Git
       end
 
       result
+    end
+
+    # Pushes the local branch `name` (refs/heads/<name>) to the same ref on the
+    # remote.
+    def push_branch(repo : Repository, name : String, force : Bool = false) : PushReport
+      push(repo, [RefUpdate.update("refs/heads/#{name}", force: force)])
+    end
+
+    # Pushes the given ref updates to the remote via receive-pack: builds the
+    # update commands from the remote advertisement, packs the objects the
+    # remote is missing, sends them, and -- on success -- advances local
+    # remote-tracking refs. Returns the server's `PushReport`.
+    def push(repo : Repository, updates : Array(RefUpdate)) : PushReport
+      raise ArgumentError.new("push requires at least one ref update") if updates.empty?
+
+      session = @transport.connect(Transport::RECEIVE_PACK)
+      begin
+        receive = ReceivePackClient.new(session)
+        advertisement = receive.discover
+
+        commands = build_push_commands(repo, advertisement, updates)
+        objects = objects_to_push(repo, advertisement, commands)
+        report = receive.send_update(commands, objects)
+        session.finish
+
+        update_tracking_after_push(repo, commands, report)
+        report
+      rescue ex
+        session.abort
+        raise ex
+      end
+    end
+
+    # Translates ref-update requests into wire commands, resolving the new tip
+    # from local refs and the old tip from the advertisement, and enforcing the
+    # fast-forward rule client-side when both endpoints are known locally.
+    private def build_push_commands(repo : Repository, advertisement : Advertisement, updates : Array(RefUpdate)) : Array(PushCommand)
+      updates.map do |update|
+        new_oid =
+          if src = update.src
+            repo.read_ref(src) || raise(Error.new("local ref #{src} does not exist"))
+          else
+            Advertisement::NULL_OID
+          end
+        old_oid = advertisement.reference(update.dst).try(&.oid) || Advertisement::NULL_OID
+
+        ensure_fast_forward(repo, update, old_oid, new_oid)
+        PushCommand.new(old_oid, new_oid, update.dst)
+      end
+    end
+
+    private def ensure_fast_forward(repo : Repository, update : RefUpdate, old_oid : String, new_oid : String) : Nil
+      return if update.force?
+      return if old_oid == Advertisement::NULL_OID || new_oid == Advertisement::NULL_OID
+      return if old_oid == new_oid
+      # Only enforce when we can actually evaluate ancestry locally; otherwise
+      # leave the decision to the server.
+      return unless repo.store.contains?(old_oid) && repo.store.contains?(new_oid)
+      unless repo.ancestor?(old_oid, new_oid)
+        raise Error.new("non-fast-forward update to #{update.dst} (retry with force)")
+      end
+    end
+
+    # Computes the objects to transmit: reachable from the pushed tips, minus
+    # everything the remote already advertises.
+    private def objects_to_push(repo : Repository, advertisement : Advertisement, commands : Array(PushCommand)) : Array(Object)
+      tips = commands.reject(&.delete?)
+        .map(&.new_oid)
+        .reject { |oid| oid == Advertisement::NULL_OID }
+        .uniq!
+      return [] of Object if tips.empty?
+
+      excludes = advertisement.references
+        .reject(&.peeled?)
+        .map(&.oid)
+        .reject { |oid| oid == Advertisement::NULL_OID }
+        .uniq!
+      ObjectWalker.new(repo.store).collect(tips, excludes)
+    end
+
+    # After a successful push, advance local remote-tracking refs to match what
+    # we just sent (or remove them on a successful delete).
+    private def update_tracking_after_push(repo : Repository, commands : Array(PushCommand), report : PushReport) : Nil
+      commands.each do |command|
+        next if report.refs[command.name]? # non-nil reason means rejected
+        next unless command.name.starts_with?("refs/heads/")
+        branch = command.name.lchop("refs/heads/")
+        tracking = "refs/remotes/#{@remote_name}/#{branch}"
+        if command.delete?
+          repo.delete_ref(tracking)
+        else
+          repo.write_ref(tracking, command.new_oid)
+        end
+      end
     end
 
     # Resolves and stores every object in a pack, using the repo's existing

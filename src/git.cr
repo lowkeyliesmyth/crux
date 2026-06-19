@@ -18,15 +18,19 @@
 # # Later, fetch and fast-forward.
 # client = Git::Client.for("git@github.com:owner/repo.git")
 # client.pull(repo)
+#
+# # Push a branch back to the remote.
+# client.push_branch(repo, "main")
 # ```
 #
-# Scope: the read path (clone, fetch, pull) is implemented. The write path
-# (push / receive-pack and pack generation) is a planned addition and will
-# slot in alongside the existing transport and protocol layers.
+# Scope: both the read path (clone, fetch, pull) and the write path
+# (push / receive-pack, including packfile generation and report-status) are
+# implemented.
 require "./git/errors"
 require "./git/object"
 require "./git/delta"
 require "./git/pack"
+require "./git/pack_writer"
 require "./git/pkt_line"
 require "./git/url"
 require "./git/capabilities"
@@ -36,8 +40,10 @@ require "./git/transport"
 require "./git/protocol"
 require "./git/tree"
 require "./git/object_store"
+require "./git/object_walker"
 require "./git/checkout"
 require "./git/repository"
+require "./git/receive_pack"
 require "./git/client"
 
 module Git

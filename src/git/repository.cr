@@ -53,6 +53,12 @@ module Git
       File.write(path, "#{oid}\n")
     end
 
+    # Deletes a ref if it exists. No-op otherwise.
+    def delete_ref(name : String) : Nil
+      path = ref_path(name)
+      File.delete(path) if File.exists?(path)
+    end
+
     # Reads a ref's object id, or nil if the ref does not exist.
     def read_ref(name : String) : String?
       path = ref_path(name)
