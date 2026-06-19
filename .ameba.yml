@@ -5,3 +5,9 @@
 
 Documentation/DocumentationAdmonition:
   Enabled: false
+
+# Shared spec helpers under */support/ are intentionally not *_spec.cr files;
+# they are required by the real spec files rather than run directly.
+Lint/SpecFilename:
+  Excluded:
+    - spec/git/support/**
