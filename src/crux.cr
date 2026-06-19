@@ -6,7 +6,10 @@ require "./commands/global"
 require "./commands/base"
 require "./commands/*"
 require "./commands/kube/*"
+require "./commands/git/*"
+require "./commands/git/batch/*"
 require "./kube/*"
+require "./git/*"
 
 Colorize.on_tty_only!
 
@@ -26,6 +29,7 @@ module Crux
       add_usage "crux <command> [subcommand] [arguments] [options]"
 
       add_command Commands::Kube.new
+      add_command Commands::Git.new
       add_command Commands::Version.new
     end
 
