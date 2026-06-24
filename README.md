@@ -4,7 +4,6 @@ A small single binary Crystal CLI for everyday DevEx and operations workflows.
 
 Crux is an **opinionated but transparent** single-binary CLI that consolidates utilities used in the day-to-day. It favors convention over configuration, and tells you exactly what it is doing whenever it touches your system.
 
-See `AGENTS.md` for the architecture and conventions for adding new commands.
 
 ## Installation
 
@@ -36,7 +35,7 @@ crux kube ysplit ./out -r https://example.com/manifests.yaml
 # remote chart targeting a specific version
 crux kube helmsplit ./out jetstack/cert-manager -v 1.20
 
-# local chart with a few values.yaml files and a project name  prefixed to every output file
+# local chart with a few values.yaml files and a project name prefixed to every output file
 crux kube helmsplit ./out ./charts/myapp -f base.yaml -f prod.yaml -p myapp
 ```
 
@@ -66,7 +65,7 @@ where `overrides.kyaml` declares the clusters, an output path template, the keys
 }
 ```
 
-Every crux run writes a `_PROVENANCE.md` file recording the exact command siganture adjacent to the output files, giving you and your team the best chance to reproduce results.
+Every crux run writes a `_PROVENANCE.md` file recording the exact command signature adjacent to the output files, giving you and your team the best chance to reproduce results.
 
 **Getting help.** `--help` works at every command and namespace level:
 
@@ -97,8 +96,12 @@ crystal spec spec/any_spec.cr
 
 ## Contributing
 
-Issues and PRs welcome. Please include test coverage and run `crystal spec` before opening a PR.
+Ran into a problem? Issues are welcome. Or if you're inclined to file a PR, see [CONTRIBUTING.md](CONTRIBUTING.md) to get set up.
 
 ## Contributors
 
 - [lowkey](https://github.com/lowkeyliesmyth) — creator and maintainer
+
+## License
+
+Available as open source under the terms of the [MIT License](LICENSE).
