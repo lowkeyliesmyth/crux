@@ -4,14 +4,14 @@ describe Crux::Kube::YamlBlock do
   describe "#emit" do
     context "with a ConfigMap containing a multi-line data value" do
       it "emits the value as a literal block scalar" do
-        src = <<-YAML
+        src = <<-'YML'
           apiVersion: v1
           kind: ConfigMap
           metadata:
             name: shield-cluster
           data:
-            cluster-shield.yaml: "cluster_config:\\n name: foo\\n"
-          YAML
+            cluster-shield.yaml: "cluster_config:\n name: foo\n"
+          YML
 
         result = Crux::Kube::YamlBlock.emit(YAML.parse(src))
 
@@ -60,7 +60,7 @@ describe Crux::Kube::YamlBlock do
         round = YAML.parse(Crux::Kube::YamlBlock.emit(YAML.parse(src)))
 
         round["count"].as_i.should eq(3)
-        round["enabled"].as_bool.should eq(true)
+        round["enabled"].as_bool.should be_true
         round["nested"]["items"].as_a.map(&.as_s).should eq(["a", "b"])
       end
     end

@@ -22,14 +22,14 @@ VALID_MULTI_DOC = <<-YAML
   YAML
 
 # Configmap with embedded double-quoted flow form YAML blob
-CONFIGMAP_MULTILINE_DOC = <<-YAML
+CONFIGMAP_MULTILINE_DOC = <<-'YML'
   apiVersion: v1
   kind: ConfigMap
   metadata:
     name: shield-cluster
   data:
-    cluster-shield.yaml: "cluster_config:\\n  name: foo\\n"
-  YAML
+    cluster-shield.yaml: "cluster_config:\n  name: foo\n"
+  YML
 
 MISSING_METADATA_DOC = <<-YAML
   apiVersion: apps/v1
@@ -77,12 +77,12 @@ BACKSLASH_NAME_DOC = <<-YAML
     name: "foo\\\\bar"
   YAML
 
-NUL_NAME_DOC = <<-YAML
+NUL_NAME_DOC = <<-'YML'
   apiVersion: v1
   kind: ConfigMap
   metadata:
-    name: "foo\\u0000bar"
-  YAML
+    name: "foo\u0000bar"
+  YML
 
 LEADING_DOT_NAME_DOC = <<-YAML
   apiVersion: v1
