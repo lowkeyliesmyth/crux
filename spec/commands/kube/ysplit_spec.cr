@@ -2,14 +2,14 @@ require "../../spec_helper"
 require "webmock"
 
 # Fixture YAML doc strings shared across multiple specs
-VALID_SINGLE_DOC = <<-YAML
+VALID_SINGLE_DOC = <<-YML
   apiVersion: apps/v1
   kind: Deployment
   metadata:
     name: my-app
-  YAML
+  YML
 
-VALID_MULTI_DOC = <<-YAML
+VALID_MULTI_DOC = <<-YML
   apiVersion: apps/v1
   kind: Deployment
   metadata:
@@ -19,7 +19,7 @@ VALID_MULTI_DOC = <<-YAML
   kind: Service
   metadata:
     name: my-app
-  YAML
+  YML
 
 # Configmap with embedded double-quoted flow form YAML blob
 CONFIGMAP_MULTILINE_DOC = <<-'YML'
@@ -31,51 +31,51 @@ CONFIGMAP_MULTILINE_DOC = <<-'YML'
     cluster-shield.yaml: "cluster_config:\n  name: foo\n"
   YML
 
-MISSING_METADATA_DOC = <<-YAML
+MISSING_METADATA_DOC = <<-YML
   apiVersion: apps/v1
   kind: Deployment
-  YAML
+  YML
 
-MISSING_KIND_DOC = <<-YAML
+MISSING_KIND_DOC = <<-YML
   apiVersion: apps/v1
   metadata:
     name: orphan
-  YAML
+  YML
 
-MISSING_NAME_DOC = <<-YAML
+MISSING_NAME_DOC = <<-YML
   apiVersion: apps/v1
   kind: Deployment
   metadata:
     namespace: default
-  YAML
+  YML
 
-NULL_NAME_DOC = <<-YAML
+NULL_NAME_DOC = <<-YML
   apiVersion: apps/v1
   kind: Deployment
   metadata:
     name:
-  YAML
+  YML
 
-TRAVERSAL_NAME_DOC = <<-YAML
+TRAVERSAL_NAME_DOC = <<-YML
   apiVersion: v1
   kind: ConfigMap
   metadata:
     name: ../../../tmp/pwned
-  YAML
+  YML
 
-SLASH_NAME_DOC = <<-YAML
+SLASH_NAME_DOC = <<-YML
   apiVersion: v1
   kind: ConfigMap
   metadata:
     name: foo/bar
-  YAML
+  YML
 
-BACKSLASH_NAME_DOC = <<-YAML
+BACKSLASH_NAME_DOC = <<-YML
   apiVersion: v1
   kind: ConfigMap
   metadata:
     name: "foo\\\\bar"
-  YAML
+  YML
 
 NUL_NAME_DOC = <<-'YML'
   apiVersion: v1
@@ -84,15 +84,15 @@ NUL_NAME_DOC = <<-'YML'
     name: "foo\u0000bar"
   YML
 
-LEADING_DOT_NAME_DOC = <<-YAML
+LEADING_DOT_NAME_DOC = <<-YML
   apiVersion: v1
   kind: ConfigMap
   metadata:
     name: .hidden
-  YAML
+  YML
 
 # One valid doc, one malformed doc
-MIXED_DOC = <<-YAML
+MIXED_DOC = <<-YML
   apiVersion: apps/v1
   kind: Deployment
   metadata:
@@ -101,11 +101,11 @@ MIXED_DOC = <<-YAML
   apiVersion: v1
   metadata:
     name: my-app
-  YAML
+  YML
 
-MALFORMED_YAML = <<-YAML
+MALFORMED_YAML = <<-YML
   key: [unclosed bracket
-  YAML
+  YML
 
 # Created a thin test subclass to expose protected methods and enable testing via spec below.
 # Why? `protected` methods cannot be called directly from outside the class, so we need a test subclass to expose and make them testable in specs.
@@ -668,7 +668,7 @@ describe Crux::Kube::ManifestSplitter do
           kind: ConfigMap
           metadata:
             name: my.app-1.example.net.com
-        YAML
+          YAML
         processor = Crux::Kube::ManifestSplitter.new(temp_dir)
         result = processor.process(yaml, out_io, err_io)
         result[:written].should eq(1)

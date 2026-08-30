@@ -47,16 +47,16 @@ alias CMO = Crux::Kube::ConfigMapOverrides
 # Builds a one-patch overrides doc template wrapper around a provided patch body
 private def overrides_doc(patch : String) : String
   <<-KYAML
-  ---
-  {
-    clusters: ["c1"],
-    output: "out/${cluster}/${object}.yaml",
-    overrides: [{
-      configmap: "shield",
-      patches: [#{patch}],
-    }],
-  }
-  KYAML
+    ---
+    {
+      clusters: ["c1"],
+      output: "out/${cluster}/${object}.yaml",
+      overrides: [{
+        configmap: "shield",
+        patches: [#{patch}],
+      }],
+    }
+    KYAML
 end
 
 describe CMO::OverridesConfig do
@@ -238,20 +238,20 @@ describe Crux::Kube::ConfigMapOverrides::Processor do
     it "writes a patch for a single cluster + single literal-value patch" do
       write_configmap.call("shield-cluster", {"cluster-shield.yaml" => "cluster_config:\n  namespace: PLACEHOLDER\n"})
       path = write_overrides.call(<<-KYAML)
-      ---
-      {
-        clusters: ["c1"],
-        output: "#{out_dir}/${cluster}/override-${object}.yaml",
-        overrides: [{
-          configmap: "shield-cluster",
-          patches: [{
-            outerPath: "data[cluster-shield.yaml]",
-            innerPath: "cluster_config.namespace",
-            value: "foobar",
+        ---
+        {
+          clusters: ["c1"],
+          output: "#{out_dir}/${cluster}/override-${object}.yaml",
+          overrides: [{
+            configmap: "shield-cluster",
+            patches: [{
+              outerPath: "data[cluster-shield.yaml]",
+              innerPath: "cluster_config.namespace",
+              value: "foobar",
+            }],
           }],
-        }],
-      }
-      KYAML
+        }
+        KYAML
 
       CMO::Processor.new(src_dir).process(path, out_io, err_io)
       generated = File.join(out_dir, "c1", "override-shield-cluster.yaml")
@@ -264,23 +264,23 @@ describe Crux::Kube::ConfigMapOverrides::Processor do
     it "resolves valueFrom: cluster.name across multiple clusters" do
       write_configmap.call("shield-host", {"dragent.yaml" => "k8s_cluster_name: PLACEHOLDER\n"})
       path = write_overrides.call(<<-KYAML)
-      ---
-      {
-        clusters: [
-          "c1",
-          "c2",
-        ],
-        output: "#{out_dir}/${cluster}/override-${object}.yaml",
-        overrides: [{
-          configmap: "shield-host",
-          patches: [{
-            outerPath: "data[dragent.yaml]",
-            innerPath: "k8s_cluster_name",
-            valueFrom: "cluster.name",
+        ---
+        {
+          clusters: [
+            "c1",
+            "c2",
+          ],
+          output: "#{out_dir}/${cluster}/override-${object}.yaml",
+          overrides: [{
+            configmap: "shield-host",
+            patches: [{
+              outerPath: "data[dragent.yaml]",
+              innerPath: "k8s_cluster_name",
+              valueFrom: "cluster.name",
+            }],
           }],
-        }],
-      }
-      KYAML
+        }
+        KYAML
 
       CMO::Processor.new(src_dir).process(path, out_io, err_io)
 
@@ -294,20 +294,20 @@ describe Crux::Kube::ConfigMapOverrides::Processor do
         "other.yaml"          => "unrelated: true\n",
       })
       path = write_overrides.call(<<-KYAML)
-      ---
-      {
-        clusters: ["c1"],
-        output: "#{out_dir}/${cluster}/override-${object}.yaml",
-        overrides: [{
-          configmap: "shield-cluster",
-          patches: [{
-            outerPath: "data[cluster-shield.yaml]",
-            innerPath: "cluster_config.namespace",
-            value: "foobar",
+        ---
+        {
+          clusters: ["c1"],
+          output: "#{out_dir}/${cluster}/override-${object}.yaml",
+          overrides: [{
+            configmap: "shield-cluster",
+            patches: [{
+              outerPath: "data[cluster-shield.yaml]",
+              innerPath: "cluster_config.namespace",
+              value: "foobar",
+            }],
           }],
-        }],
-      }
-      KYAML
+        }
+        KYAML
 
       CMO::Processor.new(src_dir).process(path, out_io, err_io)
 
@@ -318,20 +318,20 @@ describe Crux::Kube::ConfigMapOverrides::Processor do
 
     it "raises when the configmap source file is missing" do
       path = write_overrides.call(<<-KYAML)
-      ---
-      {
-        clusters: ["c1"],
-        output: "#{out_dir}/${cluster}/override-${object}.yaml",
-        overrides: [{
-          configmap: "does-not-exist",
-          patches: [{
-            outerPath: "data[a.yaml]",
-            innerPath: "x",
-            value: "v",
+        ---
+        {
+          clusters: ["c1"],
+          output: "#{out_dir}/${cluster}/override-${object}.yaml",
+          overrides: [{
+            configmap: "does-not-exist",
+            patches: [{
+              outerPath: "data[a.yaml]",
+              innerPath: "x",
+              value: "v",
+            }],
           }],
-        }],
-      }
-      KYAML
+        }
+        KYAML
 
       expect_raises(CMO::ProcessorError, /not found/) do
         CMO::Processor.new(src_dir).process(path, out_io, err_io)
@@ -341,20 +341,20 @@ describe Crux::Kube::ConfigMapOverrides::Processor do
     it "raises when the innerPath key does not exist" do
       write_configmap.call("shield-cluster", {"cluster-shield.yaml" => "cluster_config:\n  namespace: PLACEHOLDER\n"})
       path = write_overrides.call(<<-KYAML)
-      ---
-      {
-        clusters: ["c1"],
-        output: "#{out_dir}/${cluster}/override-${object}.yaml",
-        overrides: [{
-          configmap: "shield-cluster",
-          patches: [{
-            outerPath: "data[cluster-shield.yaml]",
-            innerPath: "cluster_config.nope",
-            value: "foobar",
+        ---
+        {
+          clusters: ["c1"],
+          output: "#{out_dir}/${cluster}/override-${object}.yaml",
+          overrides: [{
+            configmap: "shield-cluster",
+            patches: [{
+              outerPath: "data[cluster-shield.yaml]",
+              innerPath: "cluster_config.nope",
+              value: "foobar",
+            }],
           }],
-        }],
-      }
-      KYAML
+        }
+        KYAML
 
       expect_raises(CMO::ProcessorError, /not found/) do
         CMO::Processor.new(src_dir).process(path, out_io, err_io)
