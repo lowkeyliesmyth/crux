@@ -104,18 +104,6 @@ jobs:
         with:
           name: release-notes
           path: release_notes.md
-  docs:
-    name: Publish API docs
-    needs: [bump, release]
-    # Stable releases only; never on dry runs.
-    if: inputs.dry_run != true && inputs.prerelease == 'none'
-    permissions:
-      contents: read
-      pages: write
-      id-token: write
-    uses: ./.github/workflows/docs.yml
-    with:
-      ref: ${{ needs.bump.outputs.tag }}
   build:
     name: Build ${{ matrix.target_os }}-${{ matrix.target_arch }}
     needs: bump
@@ -124,9 +112,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          #- os: macos-13
-          #  target_os: darwin
-          #  target_arch: x86_64
           - os: macos-14
             target_os: darwin
             target_arch: arm64
