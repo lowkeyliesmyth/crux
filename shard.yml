@@ -19,7 +19,7 @@ dependencies:
 development_dependencies:
   ameba:
     github: crystal-ameba/ameba
-    version: ~> 1.6.4
+    version: ~> 1.7.0
     #tag: 1.6.4
 
   webmock:
@@ -32,6 +32,6 @@ targets:
   crux:
     main: src/main.cr
 
-crystal: ">= 1.16.3"
+crystal: ">= 1.21.0"
 
 license: MIT

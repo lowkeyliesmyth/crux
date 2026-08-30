@@ -9,6 +9,22 @@ on:
       - "spec/**"
       - "shard.yml"
       - "shard.lock"
+      - ".ameba.yml"
+      - ".github/workflows/pr-ameba.yml"
+  # Caches written by a `pull_request` run are scoped to refs/pull/N/merge and are unreadable by any other PR.
+  # Running on main writes the cache to the `refs/heads/main` scope, which every PR is allowed to restore from.
+  push:
+    branches:
+      - main
+    paths:
+      - "src/**"
+      - "spec/**"
+      - "shard.yml"
+      - "shard.lock"
+      - ".ameba.yml"
+      - ".github/workflows/pr-ameba.yml"
+env:
+  CRYSTAL_VERSION: "1.21.0"
 
 jobs:
   ameba:
@@ -16,23 +32,41 @@ jobs:
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
-      - uses: oprypin/install-crystal@d8ef131ecec0352ce0e39b81b0a6d95def58fe2f # v1
+      - uses: crystal-lang/install-crystal@cdf26dcd488490c9939e9d4d62cab169c9e4f20d # v1.8.2
         with:
-          crystal: "1.20.0"
+          crystal: ${{ env.CRYSTAL_VERSION }}
 
-      - name: Cache shards and ameba binary
+      - name: Restore shards and ameba binary
         id: cache
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
             lib
             bin/ameba
-          # cache invalidates when any shard dependencies change or crystal version changes
-          key: ameba-${{ runner.os }}-crystal-1.20.0-${{ hashFiles('shard.lock') }}
+          # cache invalidates when any shard dependencies change or crystal version changes. Cache on shard.yml because library shards don't get their shard.lock file committed.
+          key: ameba-v2-${{ runner.os }}-crystal-${{ env.CRYSTAL_VERSION }}-${{ hashFiles('shard.yml') }}
 
       - name: Install shards
         if: steps.cache.outputs.cache-hit != 'true'
         run: shards install
+
+      # ameba >=1.7.0-dev requires explicitly building now
+      - name: Build ameba binary
+        if: steps.cache.outputs.cache-hit != 'true' || hashFiles('bin/ameba') == ''
+        run: |
+          mkdir -p bin
+          crystal build -o bin/ameba lib/ameba/bin/ameba.cr
+
+      # Split save from restore and place it ahead of the lint.
+      # actions/cache saves in a post step gated on `post-if: success()`.
+      - name: Save shards and ameba binary
+        if: steps.cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            lib
+            bin/ameba
+          key: ${{ steps.cache.outputs.cache-primary-key }}
 
       - name: Run ameba
         run: bin/ameba

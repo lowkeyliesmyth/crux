@@ -18,6 +18,8 @@ on:
       - "spec/**"
       - "shard.yml"
       - "shard.lock"
+env:
+  CRYSTAL_VERSION: "1.21.0"
 
 jobs:
   coverage:
@@ -25,9 +27,15 @@ jobs:
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
-      - uses: oprypin/install-crystal@d8ef131ecec0352ce0e39b81b0a6d95def58fe2f # v1
+      - uses: crystal-lang/install-crystal@cdf26dcd488490c9939e9d4d62cab169c9e4f20d # v1.8.2
         with:
-          crystal: "1.20.0"
+          crystal: ${{ env.CRYSTAL_VERSION }}
+
+      # Ref: https://github.com/SimonKagstrom/kcov/blob/master/INSTALL.md
+      - name: Install kcov build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install binutils-dev build-essential cmake libssl-dev libcurl4-openssl-dev libelf-dev libstdc++-12-dev zlib1g-dev libdw-dev libiberty-dev
 
       - name: Cache kcov binary
         id: cache-kcov
@@ -35,14 +43,6 @@ jobs:
         with:
           path: /usr/local/bin/kcov
           key: kcov-v43-${{ runner.os }}-${{ runner.arch }}
-
-      # Build dependencies are only needed to compile kcov, so skip them on a cache hit.
-      # Ref: https://github.com/SimonKagstrom/kcov/blob/master/INSTALL.md
-      - name: Install kcov build dependencies
-        if: steps.cache-kcov.outputs.cache-hit != 'true'
-        run: |
-          sudo apt-get update
-          sudo apt-get install binutils-dev build-essential cmake libssl-dev libcurl4-openssl-dev libelf-dev libstdc++-12-dev zlib1g-dev libdw-dev libiberty-dev
 
       - name: Build and install kcov
         env:
@@ -58,14 +58,12 @@ jobs:
           sudo make install
 
       - name: Cache shards
-        id: cache-shards
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: lib
-          key: shards-${{ runner.os }}-crystal-1.20.0-${{ hashFiles('shard.lock') }}
+          key: shards-${{ runner.os }}-crystal-${{ env.CRYSTAL_VERSION }}-${{ hashFiles('shard.yml') }}
 
       - name: Install shards
-        if: steps.cache-shards.outputs.cache-hit != 'true'
         run: shards install
 
       # See reference: https://crystal-lang.org/reference/1.20/guides/testing/code_coverage.html

@@ -5,12 +5,23 @@ tasks:
   spec:
     desc: Run Crystal specs
     cmds:
-      - crystal spec
+      - crystal spec --order random
 
   lint:
     desc: Run Ameba linter
+    deps: [lint:build]
     cmds:
       - bin/ameba
+
+  lint:build:
+    desc: Compile ameba linter
+    cmds:
+      - shards install
+      - mkdir -p bin
+      - crystal build -o bin/ameba lib/ameba/bin/ameba.cr
+    status:
+      - test -x bin/ameba
+      - test bin/ameba -nt shard.lock
 
   coverage:
     desc: Run code coverage
@@ -18,9 +29,20 @@ tasks:
       - scripts/coverage.sh
 
   actionlint:
-    desc: Lint GitHub Actions workflows
+    desc: Analyze GitHub Actions workflows
     cmds:
-      - actionlint
+      #- actionlint
+      - zizmor .
+
+  actionlint:fix:
+    desc: Analyze and fix GHA workflows
+    cmds:
+      - zizmor . --fix=all
+
+  docs:
+    desc: Generates API usage docs from inline docstrings
+    cmds:
+      - crystal docs
 
   build:
     desc: Build the crux binary

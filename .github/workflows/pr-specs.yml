@@ -9,31 +9,50 @@ on:
       - "spec/**"
       - "shard.yml"
       - "shard.lock"
+      - ".github/workflows/pr-spec.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "src/**"
+      - "spec/**"
+      - "shard.yml"
+      - "shard.lock"
+      - ".github/workflows/pr-spec.yml"
+env:
+  CRYSTAL_VERSION: "1.21.0"
 
 jobs:
   spec:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-
-      - uses: oprypin/install-crystal@d8ef131ecec0352ce0e39b81b0a6d95def58fe2f # v1
+      - uses: crystal-lang/install-crystal@cdf26dcd488490c9939e9d4d62cab169c9e4f20d # v1.8.2
         with:
-          crystal: "1.20.0"
+          crystal: ${{ env.CRYSTAL_VERSION }}
 
-      - name: Cache shards and ameba binary
+      - name: Restore shards
         id: cache
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
-          path: |
-            lib
-            bin/ameba
-          # cache invalidates when any shard dependencies change or crystal version changes
-          key: ameba-${{ runner.os }}-crystal-1.20.0-${{ hashFiles('shard.lock') }}
+          # key and path match the ones in `pr-coverage.yml` which runs on push to main and the globally accessible `refs/heads/main` scope that all PR runs can actually restore from.
+          path: lib
+          # cache invalidates when any shard dependencies change or crystal version changes. Cache on shard.yml because library shards don't get their shard.lock file committed.
+          key: shards-${{ runner.os }}-crystal-${{ env.CRYSTAL_VERSION }}-${{ hashFiles('shard.yml') }}
 
       - name: Install shards
         # trying to skip ameba postinstall (which takes time to compile and isn't used for specs anyways) just make this step fail.
-        # so just use a shard cache instead.
+        # so just use a shard cache instead. A restored lib/ carries .shards.info, so this becomes a no-op and the postinstall never runs.
         run: shards install
+
+      # Split save from restore and place it ahead of the lint.
+      # actions/cache saves in a post step gated on `post-if: success()`.
+      - name: Save shards
+        if: steps.cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: lib
+          key: ${{ steps.cache.outputs.cache-primary-key }}
 
       - name: Run specs
         run: crystal spec
