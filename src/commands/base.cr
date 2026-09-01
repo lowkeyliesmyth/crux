@@ -146,7 +146,7 @@ module Crux::Commands
     end
 
     # A hook method for when the command receives missing arguments during execution.
-    # Overriddes Cling::Command.on_missing_arguments with custom formatting
+    # Overrides Cling::Command.on_missing_arguments with custom formatting
     def on_missing_arguments(args : Array(String))
       help_command = "#{full_command_path} --help".colorize.blue.bold
 
@@ -157,7 +157,7 @@ module Crux::Commands
     end
 
     # A hook method for when the command receives unknown arguments during execution.
-    # Overriddes Cling::Command.on_unknown_arguments with custom formatting
+    # Overrides Cling::Command.on_unknown_arguments with custom formatting
     def on_unknown_arguments(args : Array(String))
       help_command = %(#{full_command_path}--help).colorize.blue.bold
 
@@ -168,7 +168,7 @@ module Crux::Commands
     end
 
     # A hook method for when the command receives unknown options during execution.
-    # Overriddes Cling::Command.on_unknown_options with custom formatting
+    # Overrides Cling::Command.on_unknown_options with custom formatting
     def on_unknown_options(options : Array(String))
       help_command = %(#{full_command_path} --help).colorize.blue.bold
 

@@ -217,7 +217,7 @@ module Crux::Kube::ConfigMapOverrides
       hash[YAML::Any.new(leaf)] = YAML::Any.new(value)
     end
 
-    # Emits a minimal ConfigMap strategic-merge patch containing only the given data keys. Each value is renderd as a literal block scalar.
+    # Emits a minimal ConfigMap strategic-merge patch containing only the given data keys. Each value is rendered as a literal block scalar.
     private def build_patch(name : String, data : Hash(String, String)) : String
       YAML.build do |builder|
         builder.mapping do

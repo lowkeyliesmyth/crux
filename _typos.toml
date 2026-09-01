@@ -1,0 +1,3 @@
+[default.extend-words]
+# Intentionally defined
+CMO = "CMO"

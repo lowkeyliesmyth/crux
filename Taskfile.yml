@@ -23,6 +23,12 @@ tasks:
       - test -x bin/ameba
       - test bin/ameba -nt shard.lock
 
+  lint:fix:
+    desc: Address fixable linter violations
+    deps: [lint:build]
+    cmds:
+      - bin/ameba --fix
+
   coverage:
     desc: Run code coverage
     cmds:

@@ -1,8 +1,6 @@
 require "../spec_helper"
 
 # We want to ensure that global commands are both available to all sub/commands, and also that they are processed before local sub/commands options and args
-#
-# Setup a Crux command fixture that
 private class GlobalOrderingFixture < Crux::Commands::Base
   class_property? command_pre_run_called : Bool = false
 
