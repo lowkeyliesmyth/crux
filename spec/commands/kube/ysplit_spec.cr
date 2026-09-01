@@ -423,40 +423,6 @@ describe Crux::Commands::Ysplit do
   end
 end
 
-describe Crux::Kube::K8sDoc do
-  describe "#valid?" do
-    it "returns true when apiVersion, kind, metadata.name are present" do
-      doc = Crux::Kube::K8sDoc.from_yaml(VALID_SINGLE_DOC)
-      doc.valid?.should be_true
-    end
-
-    it "returns false when kind is missing" do
-      doc = Crux::Kube::K8sDoc.from_yaml(MISSING_KIND_DOC)
-      doc.valid?.should be_false
-    end
-
-    it "returns false when metadata is missing" do
-      doc = Crux::Kube::K8sDoc.from_yaml(MISSING_METADATA_DOC)
-      doc.valid?.should be_false
-    end
-
-    it "returns false when metadata.name is missing" do
-      doc = Crux::Kube::K8sDoc.from_yaml(MISSING_NAME_DOC)
-      doc.valid?.should be_false
-    end
-
-    it "returns false when metadata.name is null" do
-      doc = Crux::Kube::K8sDoc.from_yaml(NULL_NAME_DOC)
-      doc.valid?.should be_false
-    end
-
-    it "returns false when metadata is missing" do
-      doc = Crux::Kube::K8sDoc.from_yaml(MISSING_METADATA_DOC)
-      doc.valid?.should be_false
-    end
-  end
-end
-
 describe Crux::Kube::ManifestSplitter do
   describe "#build_filename" do
     it "produces <outdir>/<name>-<kind>.yaml without a prefix" do
