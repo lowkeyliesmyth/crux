@@ -1,112 +1,6 @@
 require "../../spec_helper"
-
+require "../../support/kube_manifest_fixtures"
 require "webmock"
-
-# Fixture YAML doc strings shared across multiple specs
-VALID_SINGLE_DOC = <<-YML
-  apiVersion: apps/v1
-  kind: Deployment
-  metadata:
-    name: my-app
-  YML
-
-VALID_MULTI_DOC = <<-YML
-  apiVersion: apps/v1
-  kind: Deployment
-  metadata:
-    name: my-app
-  ---
-  apiVersion: v1
-  kind: Service
-  metadata:
-    name: my-app
-  YML
-
-# Configmap with embedded double-quoted flow form YAML blob
-CONFIGMAP_MULTILINE_DOC = <<-'YML'
-  apiVersion: v1
-  kind: ConfigMap
-  metadata:
-    name: shield-cluster
-  data:
-    cluster-shield.yaml: "cluster_config:\n  name: foo\n"
-  YML
-
-MISSING_METADATA_DOC = <<-YML
-  apiVersion: apps/v1
-  kind: Deployment
-  YML
-
-MISSING_KIND_DOC = <<-YML
-  apiVersion: apps/v1
-  metadata:
-    name: orphan
-  YML
-
-MISSING_NAME_DOC = <<-YML
-  apiVersion: apps/v1
-  kind: Deployment
-  metadata:
-    namespace: default
-  YML
-
-NULL_NAME_DOC = <<-YML
-  apiVersion: apps/v1
-  kind: Deployment
-  metadata:
-    name:
-  YML
-
-TRAVERSAL_NAME_DOC = <<-YML
-  apiVersion: v1
-  kind: ConfigMap
-  metadata:
-    name: ../../../tmp/pwned
-  YML
-
-SLASH_NAME_DOC = <<-YML
-  apiVersion: v1
-  kind: ConfigMap
-  metadata:
-    name: foo/bar
-  YML
-
-BACKSLASH_NAME_DOC = <<-YML
-  apiVersion: v1
-  kind: ConfigMap
-  metadata:
-    name: "foo\\\\bar"
-  YML
-
-NUL_NAME_DOC = <<-'YML'
-  apiVersion: v1
-  kind: ConfigMap
-  metadata:
-    name: "foo\u0000bar"
-  YML
-
-LEADING_DOT_NAME_DOC = <<-YML
-  apiVersion: v1
-  kind: ConfigMap
-  metadata:
-    name: .hidden
-  YML
-
-# One valid doc, one malformed doc
-MIXED_DOC = <<-YML
-  apiVersion: apps/v1
-  kind: Deployment
-  metadata:
-    name: my-app
-  ---
-  apiVersion: v1
-  metadata:
-    name: my-app
-  YML
-
-MALFORMED_YAML = <<-YML
-  key: [unclosed bracket
-  YML
 
 # Created a thin test subclass to expose protected methods and enable testing via spec below.
 # Why? `protected` methods cannot be called directly from outside the class, so we need a test subclass to expose and make them testable in specs.
@@ -148,10 +42,10 @@ describe TestableYsplit do
     context "successful fetch" do
       it "returns response body on 200 OK" do
         WebMock.stub(:get, "https://example.com/manifest.yaml")
-          .to_return(status: 200, body: VALID_SINGLE_DOC)
+          .to_return(status: 200, body: KubeManifestFixtures::VALID_SINGLE_DOC)
 
         result = subject.test_fetch_remote(URI.parse("https://example.com/manifest.yaml"))
-        result.should eq(VALID_SINGLE_DOC)
+        result.should eq(KubeManifestFixtures::VALID_SINGLE_DOC)
       end
     end
 
@@ -160,10 +54,10 @@ describe TestableYsplit do
         WebMock.stub(:get, "https://example.com/manifest.yml")
           .to_return(status: 301, headers: {"Location" => "https://cdn.example.com/manifest.yaml"})
         WebMock.stub(:get, "https://cdn.example.com/manifest.yaml")
-          .to_return(status: 200, body: VALID_SINGLE_DOC)
+          .to_return(status: 200, body: KubeManifestFixtures::VALID_SINGLE_DOC)
 
         result = subject.test_fetch_remote(URI.parse("https://example.com/manifest.yml"))
-        result.should eq(VALID_SINGLE_DOC)
+        result.should eq(KubeManifestFixtures::VALID_SINGLE_DOC)
       end
 
       it "follows a chain of redirects (302 -> 301 -> 200)" do
@@ -172,20 +66,20 @@ describe TestableYsplit do
         WebMock.stub(:get, "https://example.com/second.yaml")
           .to_return(status: 301, headers: {"Location" => "https://example.com/third.yaml"})
         WebMock.stub(:get, "https://example.com/third.yaml")
-          .to_return(status: 200, body: VALID_SINGLE_DOC)
+          .to_return(status: 200, body: KubeManifestFixtures::VALID_SINGLE_DOC)
 
         result = subject.test_fetch_remote(URI.parse("https://example.com/first.yaml"))
-        result.should eq(VALID_SINGLE_DOC)
+        result.should eq(KubeManifestFixtures::VALID_SINGLE_DOC)
       end
 
       it "resolves relative Location headers against the original URL" do
         WebMock.stub(:get, "https://example.com/main/manifest.yaml")
           .to_return(status: 302, headers: {"Location" => "/subdir/level/stuff.yaml"})
         WebMock.stub(:get, "https://example.com/subdir/level/stuff.yaml")
-          .to_return(status: 200, body: VALID_SINGLE_DOC)
+          .to_return(status: 200, body: KubeManifestFixtures::VALID_SINGLE_DOC)
 
         result = subject.test_fetch_remote(URI.parse("https://example.com/main/manifest.yaml"))
-        result.should eq(VALID_SINGLE_DOC)
+        result.should eq(KubeManifestFixtures::VALID_SINGLE_DOC)
       end
     end
 
@@ -270,9 +164,9 @@ describe TestableYsplit do
       it "allows RFC 1918 private addresses" do
         subject.stubbed_ips = [Socket::IPAddress.new("10.0.0.10", 80)]
         WebMock.stub(:get, "https://internal.example.com/manifests.yaml")
-          .to_return(status: 200, body: VALID_SINGLE_DOC)
+          .to_return(status: 200, body: KubeManifestFixtures::VALID_SINGLE_DOC)
         result = subject.test_fetch_remote(URI.parse("https://internal.example.com/manifests.yaml"))
-        result.should eq(VALID_SINGLE_DOC)
+        result.should eq(KubeManifestFixtures::VALID_SINGLE_DOC)
       end
     end
 
