@@ -33,10 +33,11 @@ module Crux::Kube
       expanded_path.starts_with?(expanded_outdir)
     end
 
-    # Processes a multi-doc YAML string and writes each doc to a separate file in outdir.
+    # Processes a multi-doc YAML string *content* and writes each doc to a separate file in `@outdir`.
+    #
     # Docs that are null/empty or invalid K8s manifests are skipped with a warning.
     #
-    # Returns a NamedTuple with the number of `written` and `skipped` docs.
+    # Returns a NamedTuple of `{written: count, skipped: count}`.
     def process(content : String, out_io : IO = STDOUT, err_io : IO = STDERR) : {written: Int32, skipped: Int32}
       Dir.mkdir_p(@outdir)
 
