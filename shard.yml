@@ -13,8 +13,11 @@ dependencies:
 
   kyaml:
     github: lowkeyliesmyth/kyaml
-    # Commit corresponds to 0.3.0
-    commit: 72ded711af046021b909810c3a8f63bcdd7df432
+    version: ~> 0.3.0
+
+  etch:
+    github: lowkeyliesmyth/etch
+    version: ~> 0.1.0
 
 development_dependencies:
   ameba:

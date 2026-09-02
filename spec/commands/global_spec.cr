@@ -20,13 +20,19 @@ end
 
 describe Crux::Commands::Global do
   context "with a new command" do
-    it "processes global --help calls before invoking local command_pre_run commands" do
+    it "configures output and processes global --help calls before invoking local command_pre_run commands" do
       GlobalOrderingFixture.command_pre_run_called = false
-      cmd = GlobalOrderingFixture.new
-      cmd.stdout = IO::Memory.new
+      output = IO::Memory.new
+      errors = IO::Memory.new
+      command = GlobalOrderingFixture.new
+      command.stdout = output
+      command.stderr = errors
 
-      cmd.execute(["--help"])
+      status = command.execute(["--help"])
 
+      status.should eq(0)
+      output.to_s.should contain("USAGE")
+      errors.to_s.should be_empty
       GlobalOrderingFixture.command_pre_run_called?.should be_false
     end
   end

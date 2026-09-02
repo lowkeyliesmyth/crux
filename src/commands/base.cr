@@ -8,15 +8,14 @@ module Crux::Commands
       super
 
       @inherit_options = true
-      @debug = false
       add_option 'h', "help", description: "show help information"
       add_option "debug", description: "print debug information"
       add_option "no-color", description: "disable color codes"
     end
 
     # Returns the help template for this command.
-    # Overrides the upstream Cling::Command.help_template method with help text colors, consistent output spacing, and structure.
-    # Only partially implements Cling::Formatter, so look at upstream for any missing functionality.
+    # Overrides the upstream `Cling::Command.help_template` method with help text colors, consistent output spacing, and structure.
+    # Only partially implements `Cling::Formatter`, so look at upstream for any missing functionality.
     def help_template : String
       String.build do |io|
         io << "Usage".upcase.colorize.blue.bold << '\n'
@@ -81,21 +80,48 @@ module Crux::Commands
       end
     end
 
-    def debug(data : _) : Nil
-      return unless @debug
-      stdout << "(#) ".colorize.blue << data << '\n'
+    # Lazily instantiate a new `Etch::Logger`, or reference the existing instance if it already exists.
+    protected def logger : Etch::Logger
+      @logger ||= Etch::Logger.new(stdout)
     end
 
-    def info(data : _) : Nil
-      stdout << "(i) ".colorize.green << data << '\n'
+    # Configure the logger's debug and color profile based on the given cling command's constructed *options*.
+    protected def configure_logger(options : Cling::Options) : Nil
+      logger.output = stdout
+      logger.level = options.has?("debug") ? Etch::Level::Debug : Etch::Level::Info
+      logger.color_profile = Foundation::Profile::Ascii if options.has?("no-color")
     end
 
-    def warn(data : _) : Nil
-      stdout << "(!) ".colorize.yellow << data << '\n'
+    def debug(message, **fields) : Nil
+      logger.debug(message, **fields)
     end
 
-    def error(data : _) : Nil
-      stdout << "(!!) ".colorize.red << data << '\n'
+    def debug(message, fields : Enumerable(Tuple(String, V))) : Nil forall V
+      logger.debug(message, fields)
+    end
+
+    def info(message, **fields) : Nil
+      logger.info(message, **fields)
+    end
+
+    def info(message, fields : Enumerable(Tuple(String, V))) : Nil forall V
+      logger.info(message, fields)
+    end
+
+    def warn(message, **fields) : Nil
+      logger.warn(message, **fields)
+    end
+
+    def warn(message, fields : Enumerable(Tuple(String, V))) : Nil forall V
+      logger.warn(message, fields)
+    end
+
+    def error(message, **fields) : Nil
+      logger.error(message, **fields)
+    end
+
+    def error(message, fields : Enumerable(Tuple(String, V))) : Nil forall V
+      logger.error(message, fields)
     end
 
     # Override and extend upstream cling on_error method
@@ -113,7 +139,7 @@ module Crux::Commands
         error ex
       end
 
-      if @debug
+      if logger.enabled?(Etch::Level::Debug)
         # handle failure in case ex.backtrace is nil and not provided
         if backtrace = ex.backtrace
           debug "Loading stack trace..."

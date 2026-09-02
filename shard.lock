@@ -8,9 +8,17 @@ shards:
     git: https://github.com/devnote-dev/cling.git
     version: 3.1.0+git.commit.e23db4aa04ce4727a1e3f699088c114a1930c3e7
 
+  etch:
+    git: https://github.com/lowkeyliesmyth/etch.git
+    version: 0.1.0
+
   kyaml:
     git: https://github.com/lowkeyliesmyth/kyaml.git
     version: 0.3.0+git.commit.72ded711af046021b909810c3a8f63bcdd7df432
+
+  sheen:
+    git: https://github.com/lowkeyliesmyth/sheen.git
+    version: 0.1.3
 
   webmock:
     git: https://github.com/manastech/webmock.cr.git
