@@ -92,61 +92,61 @@ module Crux::Commands
       logger.color_profile = Foundation::Profile::Ascii if options.has?("no-color")
     end
 
+    # Emits a debug-level *message* with the given named k=v *fields* as structured data.
     def debug(message, **fields) : Nil
       logger.debug(message, **fields)
     end
 
+    # Emits a debug-level *message* with the given *fields* k-v tuples as structured data.
     def debug(message, fields : Enumerable(Tuple(String, V))) : Nil forall V
       logger.debug(message, fields)
     end
 
+    # Emits an info-level *message* with the given named k=v *fields* as structured data.
     def info(message, **fields) : Nil
       logger.info(message, **fields)
     end
 
+    # Emits an info-level *message* with the given *fields* k-v tuples as structured data.
     def info(message, fields : Enumerable(Tuple(String, V))) : Nil forall V
       logger.info(message, fields)
     end
 
+    # Emits a warn-level *message* with the given named k=v *fields* as structured data.
     def warn(message, **fields) : Nil
       logger.warn(message, **fields)
     end
 
+    # Emits a warn-level *message* with the given *fields* k-v tuples as structured data.
     def warn(message, fields : Enumerable(Tuple(String, V))) : Nil forall V
       logger.warn(message, fields)
     end
 
+    # Emits an error-level *message* with the given named k=v *fields* as structured data.
     def error(message, **fields) : Nil
       logger.error(message, **fields)
     end
 
+    # Emits an error-level *message* with the given *fields* k-v tuples as structured data.
     def error(message, fields : Enumerable(Tuple(String, V))) : Nil forall V
       logger.error(message, fields)
     end
 
-    # Override and extend upstream cling on_error method
-    # Use the crux-specific log formatting methods, provide more useful error help, and implement debug flag support
-    def on_error(ex : Exception)
+    # Handles backtrace emission and emitting user-facing error messsage for an *ex* exception raised during command execution.
+    #
+    # Overrides the upstream cling `on_error` method.
+    def on_error(ex : Exception) : NoReturn
       case ex
-      # handle cling exceptions here
       when Cling::CommandError
-        help_command = %(#{full_command_path} --help).colorize.blue.bold
-        error ex
-        error "See '#{help_command}' for more help"
-        # and I guess any other unexpected exceptions too
+        error "Command failed",
+          err: ex,
+          help_command: help_command
       else
-        error "Unexpected exception:"
-        error ex
-      end
+        error "Unexpected exception", err: ex
 
-      if logger.enabled?(Etch::Level::Debug)
-        # handle failure in case ex.backtrace is nil and not provided
-        if backtrace = ex.backtrace
-          debug "Loading stack trace..."
-          backtrace.each { |line| debug " " + line }
-        else
-          debug "No stack trace available"
-        end
+        backtrace = ex.backtrace
+        debug "Unexpected exception context",
+          backtrace: backtrace ? backtrace.join('\n') : "No stack trace available"
       end
 
       exit_program
@@ -171,38 +171,58 @@ module Crux::Commands
       path_parts.reverse.join(" ")
     end
 
-    # A hook method for when the command receives missing arguments during execution.
-    # Overrides Cling::Command.on_missing_arguments with custom formatting
-    def on_missing_arguments(args : Array(String))
-      help_command = "#{full_command_path} --help".colorize.blue.bold
-
-      error "Missing required argument#{"s" if args.size > 1}:"
-      error " #{args.join(", ")}"
-      error "See '#{help_command}' for more help"
+    # Hook fired when the command receives missing *args* during execution.
+    #
+    # Overrides upstream `on_missing_arguments` method.
+    def on_missing_arguments(args : Array(String)) : NoReturn
+      error "Missing required argument#{"s" if args.size > 1}",
+        arguments: args.join(", "),
+        help_command: help_command
       exit_program
     end
 
-    # A hook method for when the command receives unknown arguments during execution.
-    # Overrides Cling::Command.on_unknown_arguments with custom formatting
-    def on_unknown_arguments(args : Array(String))
-      help_command = %(#{full_command_path}--help).colorize.blue.bold
-
-      error "Unexpected argument#{"s" if args.size > 1} for this command:"
-      error "\t#{args.join(", ")}".colorize.red
-      error "See '#{help_command}' for more information"
+    # Hook fired when the command receives unknown *args* during execution.
+    #
+    # Overrides upstream `on_unknown_arguments` method.
+    def on_unknown_arguments(args : Array(String)) : NoReturn
+      error "Unexpected argument#{"s" if args.size > 1}",
+        arguments: args.join(", "),
+        help_command: help_command
       exit_program
     end
 
-    # A hook method for when the command receives unknown options during execution.
-    # Overrides Cling::Command.on_unknown_options with custom formatting
+    # Hook fired when the command receives invalid options during execution that emits a *message*.
+    #
+    # Overrides upstream `on_invalid_option`
+    def on_invalid_option(message : String) : NoReturn
+      error "Invalid option",
+        err: message,
+        help_command: help_command
+      exit_program
+    end
+
+    # Hook fired when the command receives missing *options* during execution.
+    #
+    # Overrides upstream `on_missing_option`.
+    def on_missing_options(options : Array(String)) : NoReturn
+      error "Missing required option#{"s" if options.size > 1}",
+        options: options.join(", "),
+        help_command: help_command
+      exit_program
+    end
+
+    # Hook fired when the command receives unknown *options* during execution.
+    #
+    # Overrides upstream `on_unknown_options`.
     def on_unknown_options(options : Array(String))
-      help_command = %(#{full_command_path} --help).colorize.blue.bold
-
-      error "Unexpected option#{"s" if options.size > 1} for this command:"
-      error "\t#{options.join ", "}".colorize.red
-      error "See '#{help_command}' for more information"
+      error "Unexpected options",
+        options: options.join(", "),
+        help_command: help_command
       exit_program
-      # raise Cling::CommandError.new
+    end
+
+    private def help_command : String
+      "#{full_command_path} --help"
     end
   end
 end
