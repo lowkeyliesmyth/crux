@@ -6,6 +6,7 @@ private class BaseLoggerFixture < Crux::Commands::Base
     Helpers
     CommandError
     UnexpectedError
+    UnexpectedErrorWithoutBacktrace
   end
 
   property action : Action = Action::None
@@ -28,6 +29,8 @@ private class BaseLoggerFixture < Crux::Commands::Base
       raise Cling::CommandError.new("expected failure")
     when .unexpected_error?
       raise Exception.new("unexpected failure")
+    when .unexpected_error_without_backtrace?
+      raise NilBacktraceError.new("unexpected failure without backtrace")
     end
   end
 
@@ -53,6 +56,12 @@ private class BaseValidationFixture < Crux::Commands::Base
   end
 
   def run(arguments : Cling::Arguments, options : Cling::Options) : Nil
+  end
+end
+
+private class NilBacktraceError < Exception
+  def backtrace? : Array(String)?
+    nil
   end
 end
 
@@ -169,7 +178,20 @@ describe Crux::Commands::Base do
       status.should eq(1)
       output.to_s.should contain("ERRO Unexpected exception ")
       output.to_s.should contain("DEBU Unexpected exception context")
-      output.to_s.should contain("backtrace=")
+      output.to_s.should contain("backtrace=\n")
+    end
+
+    it "gracefully falls back to emitting placeholder debug context when an unexpected exception has no backtrace" do
+      output = IO::Memory.new
+      command = BaseLoggerFixture.new
+      command.stdout = output
+      command.action = BaseLoggerFixture::Action::UnexpectedErrorWithoutBacktrace
+
+      status = command.execute(["--debug"])
+
+      status.should eq(1)
+      output.to_s.should contain("DEBU Unexpected exception context")
+      output.to_s.should contain(%(backtrace="No stack trace available"))
     end
   end
 
@@ -200,7 +222,7 @@ describe Crux::Commands::Base do
 
       status.should eq(1)
       output.to_s.should contain("ERRO Missing required argument")
-      output.to_s.should contain("arguments=required")
+      output.to_s.should contain("arguments=required_arg")
       output.to_s.should contain(%(help_command="fixtures --help"))
     end
 

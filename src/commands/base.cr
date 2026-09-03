@@ -80,12 +80,12 @@ module Crux::Commands
       end
     end
 
-    # Lazily instantiate a new `Etch::Logger`, or reference the existing instance if it already exists.
+    # Returns the command's stable logger, lazily binding it to the current standard output.
     protected def logger : Etch::Logger
       @logger ||= Etch::Logger.new(stdout)
     end
 
-    # Configure the logger's debug and color profile based on the given cling command's constructed *options*.
+    # Rebinds logger output and resets execution settings from parsed command *options*.
     protected def configure_logger(options : Cling::Options) : Nil
       logger.output = stdout
       logger.level = options.has?("debug") ? Etch::Level::Debug : Etch::Level::Info
@@ -132,7 +132,9 @@ module Crux::Commands
       logger.error(message, fields)
     end
 
-    # Handles backtrace emission and emitting user-facing error messsage for an *ex* exception raised during command execution.
+    # Emits a structured user-facing error messsage for an *ex* exception raised during command execution.
+    #
+    # Includes debug context when enabled. Exits with status 1.
     #
     # Overrides the upstream cling `on_error` method.
     def on_error(ex : Exception) : NoReturn
@@ -144,9 +146,11 @@ module Crux::Commands
       else
         error "Unexpected exception", err: ex
 
-        backtrace = ex.backtrace
-        debug "Unexpected exception context",
-          backtrace: backtrace ? backtrace.join('\n') : "No stack trace available"
+        if logger.enabled?(Etch::Level::Debug)
+          backtrace = ex.backtrace?
+          debug "Unexpected exception context",
+            backtrace: backtrace ? backtrace.join('\n') : "No stack trace available"
+        end
       end
 
       exit_program
@@ -211,10 +215,10 @@ module Crux::Commands
       exit_program
     end
 
-    # Hook fired when the command receives unknown *options* during execution.
+    # Hook fired when the command receives unknown *options* during execution, emits a structured error message and exits with status 1.
     #
     # Overrides upstream `on_unknown_options`.
-    def on_unknown_options(options : Array(String))
+    def on_unknown_options(options : Array(String)) : NoReturn
       error "Unexpected options",
         options: options.join(", "),
         help_command: help_command
