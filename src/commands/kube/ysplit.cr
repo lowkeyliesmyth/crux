@@ -68,7 +68,7 @@ module Crux::Commands
                   exit_program 1
                 end
       processor = Crux::Kube::ManifestSplitter.new(outdir, prefix)
-      result = processor.process(content, stdout, stderr)
+      result = processor.process(content, logger)
 
       write_provenance(outdir, path, remote, prefix)
       count_label = result[:written] == 1 ? "1 file" : "#{result[:written]} files"

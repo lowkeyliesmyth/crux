@@ -87,7 +87,7 @@ module Crux::Commands
       rendered = sanitize_rendered(rendered)
 
       processor = Crux::Kube::ManifestSplitter.new(outdir, prefix)
-      result = processor.process(rendered, stdout, stderr)
+      result = processor.process(rendered, logger)
 
       # Re-compute chart value so we don't leak the resolved path
       write_provenance(outdir, arguments.get("chart").as_s, version, values, prefix, overrides)
