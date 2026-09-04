@@ -117,7 +117,7 @@ describe CMO::OverridesConfig do
       config = CMO::OverridesConfig.from_kyaml(
         overrides_doc(%({ outerPath: "data[dragent.yaml]", innerPath: "cluster_config.name", valueFrom: "cluster.region" }))
       )
-      expect_raises(CMO::ProcessorError, /unsupported valueFrom/) do
+      expect_raises(CMO::ProcessorError, /Unsupported valueFrom/) do
         config.validate!
       end
     end
@@ -201,8 +201,8 @@ describe Crux::Kube::ConfigMapOverrides::Processor do
     src_dir = ""
     out_dir = ""
     work = ""
-    out_io = IO::Memory.new
-    err_io = IO::Memory.new
+    log_io = IO::Memory.new
+    logger = Etch::Logger.new(log_io)
 
     # Writes a CM source file into src_dir. Data values are emitted as doublequoted flow-scalars so we can validate block-scalar normalization functionality.
     write_configmap = ->(name : String, data : Hash(String, String)) do
@@ -227,8 +227,8 @@ describe Crux::Kube::ConfigMapOverrides::Processor do
       Dir.mkdir_p(src_dir)
       Dir.mkdir_p(out_dir)
       Dir.mkdir_p(work)
-      out_io = IO::Memory.new
-      err_io = IO::Memory.new
+      log_io = IO::Memory.new
+      logger = Etch::Logger.new(log_io)
     end
 
     after_each do
@@ -253,12 +253,18 @@ describe Crux::Kube::ConfigMapOverrides::Processor do
         }
         KYAML
 
-      CMO::Processor.new(src_dir).process(path, out_io, err_io)
+      CMO::Processor.new(src_dir).process(path, logger)
       generated = File.join(out_dir, "c1", "override-shield-cluster.yaml")
+      output = log_io.to_s
+
       File.exists?(generated).should be_true
       content = File.read(generated)
       content.should contain("cluster-shield.yaml: |")
       content.should contain("namespace: foobar")
+      output.should contain("INFO Written")
+      output.should contain("path=#{generated}")
+      output.should contain("cluster=c1")
+      output.should contain("configmap=shield-cluster")
     end
 
     it "resolves valueFrom: cluster.name across multiple clusters" do
@@ -282,10 +288,12 @@ describe Crux::Kube::ConfigMapOverrides::Processor do
         }
         KYAML
 
-      CMO::Processor.new(src_dir).process(path, out_io, err_io)
+      CMO::Processor.new(src_dir).process(path, logger)
 
       File.read(File.join(out_dir, "c1", "override-shield-host.yaml")).should contain("k8s_cluster_name: c1")
       File.read(File.join(out_dir, "c2", "override-shield-host.yaml")).should contain("k8s_cluster_name: c2")
+      log_io.to_s.should contain("cluster=c1")
+      log_io.to_s.should contain("cluster=c2")
     end
 
     it "includes only patched data keys in the output" do
@@ -309,7 +317,7 @@ describe Crux::Kube::ConfigMapOverrides::Processor do
         }
         KYAML
 
-      CMO::Processor.new(src_dir).process(path, out_io, err_io)
+      CMO::Processor.new(src_dir).process(path, logger)
 
       content = File.read(File.join(out_dir, "c1", "override-shield-cluster.yaml"))
       content.should contain("cluster-shield.yaml")
@@ -334,7 +342,7 @@ describe Crux::Kube::ConfigMapOverrides::Processor do
         KYAML
 
       expect_raises(CMO::ProcessorError, /not found/) do
-        CMO::Processor.new(src_dir).process(path, out_io, err_io)
+        CMO::Processor.new(src_dir).process(path, logger)
       end
     end
 
@@ -357,7 +365,7 @@ describe Crux::Kube::ConfigMapOverrides::Processor do
         KYAML
 
       expect_raises(CMO::ProcessorError, /not found/) do
-        CMO::Processor.new(src_dir).process(path, out_io, err_io)
+        CMO::Processor.new(src_dir).process(path, logger)
       end
     end
   end

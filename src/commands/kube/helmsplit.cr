@@ -93,7 +93,7 @@ module Crux::Commands
       write_provenance(outdir, arguments.get("chart").as_s, version, values, prefix, overrides)
 
       if overrides
-        Crux::Kube::ConfigMapOverrides::Processor.new(outdir).process(overrides, stdout, stderr)
+        Crux::Kube::ConfigMapOverrides::Processor.new(outdir).process(overrides, logger)
       end
 
       count_label = result[:written] == 1 ? "1 file" : "#{result[:written]} files"

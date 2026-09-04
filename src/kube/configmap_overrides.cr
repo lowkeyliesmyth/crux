@@ -31,25 +31,25 @@ module Crux::Kube::ConfigMapOverrides
     def validate! : Nil
       if value && value_from
         raise ProcessorError.new(
-          "patch (outerPath=#{outer_path}, innerPath=#{inner_path}) has both 'value' and 'valueFrom' set. Exactly one is required."
+          "Patch (outerPath=#{outer_path}, innerPath=#{inner_path}) has both 'value' and 'valueFrom' set. Exactly one is required."
         )
       end
 
       unless value || value_from
         raise ProcessorError.new(
-          "patch (outerPath=#{outer_path}, innerPath=#{inner_path}) has neither 'value' nor 'valueFrom' set. Exactly one is required."
+          "Patch (outerPath=#{outer_path}, innerPath=#{inner_path}) has neither 'value' nor 'valueFrom' set. Exactly one is required."
         )
       end
 
       if (vf = value_from) && vf != SUPPORTED_VALUE_FROM
         raise ProcessorError.new(
-          "unsupported valueFrom ref '#{vf}'. Only #{SUPPORTED_VALUE_FROM} is supported."
+          "Unsupported valueFrom ref '#{vf}'. Only #{SUPPORTED_VALUE_FROM} is supported."
         )
       end
     end
   end
 
-  # ConfigMap target and the patches to apply to it.
+  # The ConfigMap source and the target patches that will be to applied over it.
   struct OverrideEntry
     include KYAML::Serializable
 
@@ -76,7 +76,7 @@ module Crux::Kube::ConfigMapOverrides
       end
     end
 
-    # Reads and parses an overrides file, then validates it.
+    # Reads and parses an overrides file from *path*, then validates it.
     #
     # Raises on missing file or KYAML parsing errors.
     def self.load(path : String) : OverridesConfig
@@ -121,21 +121,21 @@ module Crux::Kube::ConfigMapOverrides
       segments
     end
 
-    # Reads, validates, and applies an overrides config, writing one Configmap patch file per cluster+override-entry pair.
+    # Applies the config at **overrides_path** and emits successful writes through **logger**. Writes one Configmap patch file per cluster+override-entry pair.
     #
-    # Raises on any error, leaving prior writes in place.
-    def process(overrides_path : String, out_io : IO = STDOUT, err_io : IO = STDERR) : Nil
+    # Raises on any validation or processing failure, leaving prior writes intact.
+    def process(overrides_path : String, logger : Etch::Logger) : Nil
       config = OverridesConfig.load(overrides_path)
 
       config.clusters.each do |cluster|
         config.overrides.each do |entry|
-          write_entry(config, cluster, entry, out_io)
+          write_entry(config, cluster, entry, logger)
         end
       end
     end
 
-    # Generates and writes one patch file for a single cluster+entry pair.
-    private def write_entry(config : OverridesConfig, cluster : String, entry : OverrideEntry, out_io : IO) : Nil
+    # Generates and writes one patch from **config** for a single **cluster** and **entry** pair, reporting the output through **logger**.
+    private def write_entry(config : OverridesConfig, cluster : String, entry : OverrideEntry, logger : Etch::Logger) : Nil
       source = File.join(@outdir, "#{entry.configmap}-configmap.yaml")
       unless File.file?(source)
         raise ProcessorError.new("ConfigMap source file not found: #{source}")
@@ -159,10 +159,16 @@ module Crux::Kube::ConfigMapOverrides
       end
 
       # TODO: the naive way saves the day for now. At some point let's probably do something more elegant than matching a static list of strings defined here.
-      output_path = config.output.gsub("${cluster}", cluster).gsub("${object}", entry.configmap)
+      output_path = config.output
+        .gsub("${cluster}", cluster)
+        .gsub("${object}", entry.configmap)
+
       Dir.mkdir_p(File.dirname(output_path))
       File.write(output_path, build_patch(entry.configmap, patched_data))
-      out_io.puts "Written: #{output_path}"
+      logger.info "Written",
+        path: output_path,
+        cluster: cluster,
+        configmap: entry.configmap
     end
 
     # Reads and parses the embedded YAML string at `data[<data_key>]` in the configmap.
