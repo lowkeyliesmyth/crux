@@ -1,5 +1,6 @@
 require "../../spec_helper"
 require "../../support/kube_manifest_fixtures"
+require "file_utils"
 require "webmock"
 
 # Created a thin test subclass to expose protected methods and enable testing via spec below.
@@ -25,8 +26,20 @@ class TestableYsplit < Crux::Commands::Ysplit
   end
 end
 
+# Execute ypslit with provided **input** (crux args and opts) and return its status and string representations of both captured stdout and stderr in a tuple.
+private def execute_ysplit(input : Array(String)) : {Int32, String, String}
+  output = IO::Memory.new
+  errors = IO::Memory.new
+  command = TestableYsplit.new
+  command.stdout = output
+  command.stderr = errors
+
+  status = command.execute(input)
+  {status, output.to_s, errors.to_s}
+end
+
 describe TestableYsplit do
-  describe "#fetch_remote" do
+  describe "#fetch_remote", tags: "webmock" do
     # Still use the `subject` defined in the context
     # Otherwise recreate it if necessary
     subject = TestableYsplit.new
@@ -199,32 +212,6 @@ describe TestableYsplit do
     end
   end
 
-  #  describe "#read_local_file" do
-  #    subject = TestableYsplit.new
-  #    tmp_file = ""
-  #
-  #    before_each do
-  #      tmp_file = File.join(Dir.tempdir, "ysplit_read_spec_#{Time.utc.to_unix_ms}")
-  #    end
-  #
-  #    after_each do
-  #      File.delete(tmp_file) if File.exists?(tmp_file)
-  #    end
-  #
-  #    it "reads a small file unchanged" do
-  #      File.write(tmp_file, VALID_SINGLE_DOC)
-  #      subject.test_read_local_file(tmp_file).should eq(VALID_SINGLE_DOC)
-  #    end
-  #
-  #    it "raises when file exceeds MAX_BYTES" do
-  #      content = "a" * (Crux::Commands::Ysplit::MAX_BYTES + 1)
-  #      File.write(tmp_file, content)
-  #      expect_raises(Crux::Commands::Ysplit::YsplitError, /exceeds.*limit/) do
-  #        subject.test_read_local_file(tmp_file)
-  #      end
-  #    end
-  #  end
-
   describe "#disallowed_ip?" do
     subject = TestableYsplit.new
 
@@ -313,6 +300,104 @@ describe Crux::Commands::Ysplit do
         expect_raises(Crux::Commands::Ysplit::YsplitError) do
           subject.validate_yaml_url(url)
         end
+      end
+    end
+  end
+end
+context "validate cli outputs" do
+  describe "#execute", tags: "io" do
+    work_dir = Path.new
+
+    before_each do
+      work_dir = File.join(Dir.tempdir, "ysplit_exec_spec_#{Time.utc.to_unix_ms}")
+      Dir.mkdir(work_dir)
+    end
+
+    after_each do
+      FileUtils.rm_rf(work_dir) if Dir.exists?(work_dir)
+    end
+
+    it "writes manifests and outputs manifest and completion records" do
+      source = File.join(work_dir, "manifest.yaml")
+      outdir = File.join(work_dir, "output")
+      File.write(source, KubeManifestFixtures::VALID_SINGLE_DOC)
+
+      status, output, _errors = execute_ysplit([outdir, "--file", source])
+
+      status.should eq(0)
+      File.exists?(File.join(outdir, "my-app-deployment.yaml")).should be_true
+      File.exists?(File.join(outdir, "_PROVENANCE.md")).should be_true
+
+      lines = output.lines
+      lines.size.should eq(2)
+      lines[0].should contain("INFO Written")
+      lines[1].should contain("INFO Processing complete")
+      lines[1].should contain("written=1")
+      lines[1].should contain("skipped=0")
+    end
+
+    it "emits an error record when mutually exclusive source options are passed" do
+      status, output, _errors = execute_ysplit([
+        "#{work_dir}",
+        "--file", "manifest.yaml",
+        "--remote", "https://example.com/manifest.yaml",
+      ])
+
+      status.should eq(1)
+      output.lines.size.should eq(1)
+      output.should contain("ERRO Source options are mutually exclusive")
+    end
+
+    it "emits an error record when a missing source option is passed" do
+      status, output, _errors = execute_ysplit(["foo"])
+
+      status.should eq(1)
+      output.should contain("ERRO Missing required source option")
+    end
+
+    it "emits an error record on local file read failures" do
+      missing = File.join(work_dir, "missing.yaml")
+      status, output, _errors = execute_ysplit(["#{work_dir}", "--file", "#{missing}"])
+
+      status.should eq(1)
+      output.should contain("ERRO File not found")
+      output.should contain("path=#{missing}")
+    end
+
+    context "test remote HTTP responses" do
+      Spec.after_each do
+        WebMock.reset
+      end
+      it "emits a brief error record on rejected response" do
+        url = "https://foo.com/manifest.yaml"
+        WebMock.stub(:get, url)
+          .to_return(status: 404, body: "dont-leak-debug")
+
+        status, output, _errors = execute_ysplit([work_dir.to_s, "--remote", url.to_s])
+
+        status.should eq(1)
+        output.should contain("ERRO Processing failed")
+        output.should_not contain("body_preview=")
+        output.should_not contain("dont-leak-debug")
+      end
+
+      it "emits an error record with debug info only in debug mode" do
+        url = "https://foo.com/manifest.yaml"
+        preview = "x" * 10
+        WebMock.stub(:get, url)
+          .to_return(status: 404, body: preview)
+
+        status, output, _errors = execute_ysplit([
+          work_dir.to_s,
+          "--remote", url.to_s,
+          "--debug",
+        ])
+
+        status.should eq(1)
+        output.should contain("DEBU HTTP response rejected")
+        output.should contain("status=404")
+        output.should contain("body_preview=#{preview}")
+        output.should contain("ERRO Processing failed")
       end
     end
   end

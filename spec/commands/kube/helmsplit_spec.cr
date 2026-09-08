@@ -55,7 +55,7 @@ class MockHelm < Crux::Commands::Helmsplit::Helm
 end
 
 describe Crux::Commands::Helmsplit do
-  describe "#resolve_chart" do
+  describe "#resolve_chart", tags: "io" do
     subject = TestableHelmsplit.new
     tmpdir = ""
 
@@ -206,7 +206,7 @@ describe Crux::Commands::Helmsplit do
     end
   end
 
-  describe "#write_provenance" do
+  describe "#write_provenance", tags: "io" do
     it "records the -o overrides flag when present" do
       tmpdir = File.join(Dir.tempdir, "helsplit_prov_#{Time.utc.to_unix_ms}")
       Dir.mkdir_p(tmpdir)
