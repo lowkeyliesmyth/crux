@@ -6,7 +6,10 @@ module Crux::Commands
     # Abstract collaborator for Helm operations.
     # Provides a common interface for Helm operations to be implemented (and tested) by concrete implementations.
     abstract class Helm
+      # Renders helm **chart** with ordered **values** configs and optional **version**.
       abstract def template(chart : String, version : String?, values : Array(String)) : String
+
+      # Reports if the helm binary is present and discoverable on this system or not.
       abstract def installed? : Bool
     end
 
@@ -14,7 +17,8 @@ module Crux::Commands
 
     # Concrete helm implementation that calls out to the locally installed Helm CLI
     class RealHelm < Helm
-      # Renders a helm chart via `helm template` and returns the rendered manifest as a String.
+      # Renders a helm **chart** (with supplied **version** and **values** config) via `helm template` and returns the rendered manifests as a String.
+      #
       # Raises HelmsplitError on non-zero exit.
       def template(chart : String, version : String?, values : Array(String)) : String
         args = ["template", chart, "--include-crds", "--namespace", "default"]
@@ -69,8 +73,9 @@ module Crux::Commands
     def command_pre_run(arguments : Cling::Arguments, options : Cling::Options) : Nil
       # fail early if helm is not installed
       unless @helm.installed?
-        error "'helm' executable not found on PATH"
-        error "Install helm and try again"
+        error "Executable not found",
+          executable: "helm",
+          hint: "Install helm and try again"
         exit_program 1
       end
     end
@@ -96,27 +101,27 @@ module Crux::Commands
         Crux::Kube::ConfigMapOverrides::Processor.new(outdir).process(overrides, logger)
       end
 
-      count_label = result[:written] == 1 ? "1 file" : "#{result[:written]} files"
-      info "#{"Complete:".colorize.bold.green} #{count_label} written, #{result[:skipped]} skipped."
+      info "Processing complete",
+        written: result[:written],
+        skipped: result[:skipped]
     rescue ex : HelmsplitError
-      error "#{"Helm Error:".colorize.bold}"
-      error "\t#{ex.message}"
+      error "Helm processing failed", err: ex
       exit_program 1
     rescue ex : Crux::Kube::ConfigMapOverrides::ProcessorError
-      error "#{"Overrides error:".colorize.bold}"
-      error "\t#{ex.message}"
+      error "Overrides processing failed", err: ex
       exit_program 1
     end
 
     def post_run(arguments : Cling::Arguments, options : Cling::Options) : Nil
     end
 
-    # Delegates to the Helm collaborator to render the chart and return the raw YAML output.
+    # Delegates **chart** name, optional **version**, and ordered **values** to the Helm collaborator to render the chart and return the raw YAML output.
     private def render_chart(chart : String, version : String?, values : Array(String)) : String
       @helm.template(chart, version, values)
     end
 
-    # Returns the chart reference to pass to helm as either an expanded local path or the original 'repo/chart' string.
+    # Returns the helm **chart** reference in the form of either an expanded local path or the original 'repo/chart' string.
+    #
     # Increases confidence that the user-submitted string is a valid local chart path before deferring to remote resolution.
     # Used to reduce confusing errors or misinterpretations between chart path vs 'repo/chart' collisions.
     private def resolve_chart(chart : String) : String
@@ -153,7 +158,7 @@ module Crux::Commands
       "release-name",
     ]
 
-    # Sanitizes raw helm-rendered YAML by stripping noise tokens and dropping unwanted lines.
+    # Sanitizes the raw helm **rendered** YAML output by stripping noise tokens and dropping unnecessary lines.
     #
     # Applies two passes, in order:
     #   1. Strip every YAML_PRUNE_SUBSTRINGS token from the body of YAML output
@@ -161,7 +166,9 @@ module Crux::Commands
     #
     # Returns sanitized YAML output.
     private def sanitize_rendered(rendered : String) : String
-      pruned = YAML_PRUNE_SUBSTRINGS.reduce(rendered) { |acc, substr| acc.gsub(substr, "") }
+      pruned = YAML_PRUNE_SUBSTRINGS.reduce(rendered) do |accum, substr|
+        accum.gsub(substr, "")
+      end
       pruned.split('\n').reject do |line|
         YAML_DROP_LINE_TOKENS.any? do |token|
           line.includes?(token)

@@ -46,7 +46,7 @@ module Crux::Commands
       unless has_file || has_remote
         error "Missing required source option",
           options: "-f|--file, -r|--remote",
-          help_commands: "crux kube ysplit --help"
+          help_command: "crux kube ysplit --help"
         exit_program 1
       end
     end

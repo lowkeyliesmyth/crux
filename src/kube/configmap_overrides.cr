@@ -99,7 +99,7 @@ module Crux::Kube::ConfigMapOverrides
     def initialize(@outdir : String)
     end
 
-    # Extracts the literal data key from outerPath on the form `data[<key>]`.
+    # Extracts and returns the literal data key from outerPath on the form `data[<key>]`.
     #
     # Raises on any other form.
     def self.parse_outer_key(outer_path : String) : String

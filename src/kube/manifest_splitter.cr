@@ -33,7 +33,7 @@ module Crux::Kube
       expanded_path.starts_with?(expanded_outdir)
     end
 
-    # Splits multi-doc YAML *content* into distinct files in `@outdir` and emits operational records through *logger*.
+    # Splits multi-doc YAML **content** into distinct files in `@outdir` and emits operational records through a **logger**.
     #
     # Docs that are null/empty or invalid K8s manifests are skipped with a warning. Raises when *content* is malformed.
     #

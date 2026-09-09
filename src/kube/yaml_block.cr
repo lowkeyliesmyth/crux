@@ -11,7 +11,8 @@ module Crux::Kube::YamlBlock
     end
   end
 
-  # Recursively walks a YAML::Any node, driving the builder.
+  # Recursively walks a node **any**, driving the yaml-generating **builder**.
+  #
   # Mappings and sequences recurse, string scalars containing newlines are emitted as literal block scalars. Everything else keeps default scalar style.
   private def self.emit_node(any : YAML::Any, builder : YAML::Builder) : Nil
     case raw = any.raw

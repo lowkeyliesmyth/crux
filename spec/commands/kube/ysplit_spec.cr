@@ -306,20 +306,20 @@ describe Crux::Commands::Ysplit do
 end
 context "validate cli outputs" do
   describe "#execute", tags: "io" do
-    work_dir = Path.new
+    workdir = Path.new
 
     before_each do
-      work_dir = File.join(Dir.tempdir, "ysplit_exec_spec_#{Time.utc.to_unix_ms}")
-      Dir.mkdir(work_dir)
+      workdir = File.join(Dir.tempdir, "ysplit_exec_spec_#{Time.utc.to_unix_ms}")
+      Dir.mkdir(workdir)
     end
 
     after_each do
-      FileUtils.rm_rf(work_dir) if Dir.exists?(work_dir)
+      FileUtils.rm_rf(workdir) if Dir.exists?(workdir)
     end
 
     it "writes manifests and outputs manifest and completion records" do
-      source = File.join(work_dir, "manifest.yaml")
-      outdir = File.join(work_dir, "output")
+      source = File.join(workdir, "manifest.yaml")
+      outdir = File.join(workdir, "output")
       File.write(source, KubeManifestFixtures::VALID_SINGLE_DOC)
 
       status, output, _errors = execute_ysplit([outdir, "--file", source])
@@ -338,7 +338,7 @@ context "validate cli outputs" do
 
     it "emits an error record when mutually exclusive source options are passed" do
       status, output, _errors = execute_ysplit([
-        "#{work_dir}",
+        "#{workdir}",
         "--file", "manifest.yaml",
         "--remote", "https://example.com/manifest.yaml",
       ])
@@ -356,8 +356,8 @@ context "validate cli outputs" do
     end
 
     it "emits an error record on local file read failures" do
-      missing = File.join(work_dir, "missing.yaml")
-      status, output, _errors = execute_ysplit(["#{work_dir}", "--file", "#{missing}"])
+      missing = File.join(workdir, "missing.yaml")
+      status, output, _errors = execute_ysplit(["#{workdir}", "--file", "#{missing}"])
 
       status.should eq(1)
       output.should contain("ERRO File not found")
@@ -373,7 +373,7 @@ context "validate cli outputs" do
         WebMock.stub(:get, url)
           .to_return(status: 404, body: "dont-leak-debug")
 
-        status, output, _errors = execute_ysplit([work_dir.to_s, "--remote", url.to_s])
+        status, output, _errors = execute_ysplit([workdir.to_s, "--remote", url.to_s])
 
         status.should eq(1)
         output.should contain("ERRO Processing failed")
@@ -388,7 +388,7 @@ context "validate cli outputs" do
           .to_return(status: 404, body: preview)
 
         status, output, _errors = execute_ysplit([
-          work_dir.to_s,
+          workdir.to_s,
           "--remote", url.to_s,
           "--debug",
         ])
