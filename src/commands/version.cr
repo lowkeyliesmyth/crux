@@ -1,7 +1,6 @@
 module Crux::Commands
   class Version < Base
     def setup : Nil
-      @debug = true
       @name = "version"
       @summary = "show tool version"
       @description = "Shows the version information for Crux"

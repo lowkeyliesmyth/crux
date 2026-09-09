@@ -32,21 +32,21 @@ module Crux::Commands
     end
 
     def command_pre_run(arguments : Cling::Arguments, options : Cling::Options) : Nil
-      # Handle the required but mutual-exclusivity of file and remote options early
+      # Handle the required but mutual-exclusivity of file and remote manifest source options early.
       has_file = options.has?("file")
       has_remote = options.has?("remote")
 
       if has_file && has_remote
-        error "Options are mutually exclusive:"
-        error "\t#{"-f|--file".colorize.red} and #{"-r|--remote".colorize.red}"
-        error "See #{"'crux kube ysplit --help'".colorize.blue.bold} for more help \n"
+        error "Source options are mutually exclusive",
+          options: "-f|--file, -r|--remote",
+          help_commands: "crux kube ysplit --help"
         exit_program 1
       end
 
       unless has_file || has_remote
-        error "Missing required option:"
-        error "\t#{"-f|--file".colorize.red} or #{"-r|--remote".colorize.red}"
-        error "See #{"'crux kube ysplit --help'".colorize.blue.bold} for more help \n"
+        error "Missing required source option",
+          options: "-f|--file, -r|--remote",
+          help_command: "crux kube ysplit --help"
         exit_program 1
       end
     end
@@ -68,21 +68,21 @@ module Crux::Commands
                   exit_program 1
                 end
       processor = Crux::Kube::ManifestSplitter.new(outdir, prefix)
-      result = processor.process(content, stdout, stderr)
+      result = processor.process(content, logger)
 
       write_provenance(outdir, path, remote, prefix)
-      count_label = result[:written] == 1 ? "1 file" : "#{result[:written]} files"
-      info "#{"Complete:".colorize.bold.green} #{count_label} written, #{result[:skipped]} skipped."
+      info "Processing complete",
+        written: result[:written],
+        skipped: result[:skipped]
     rescue ex : YsplitError
-      error "#{"Processing Error:".colorize.bold}"
-      error "\t#{ex.message}"
+      error "Processing failed", err: ex
       exit_program 1
     end
 
     def post_run(arguments : Cling::Arguments, options : Cling::Options) : Nil
     end
 
-    # Validate that the user-provided URL is an HTTPS endpoint and likely contains YAML
+    # Validate that the user-provided **url** is an HTTPS endpoint and likely contains YAML
     # Returns string if valid, raises YsplitError if invalid.
     def validate_yaml_url(url : URI) : String
       if url.scheme == "https" &&
@@ -90,25 +90,25 @@ module Crux::Commands
          (["yaml", "yml"].includes?(url.path.split(".").last.downcase))
         url.to_s
       else
-        raise YsplitError.new("'#{url.to_s.colorize.red}' is not a valid HTTPS url containing YAML")
+        raise YsplitError.new("'#{url}' is not a valid HTTPS url containing YAML")
       end
     end
 
-    # Resolve remote `host` to IP address to prevent SSRF or DNS rebinding.
+    # Resolve remote **host** to an IP address to prevent SSRF or DNS rebinding.
     #
-    # Written as a seam so tests can mock host resolution without calling out.
+    # Written so tests can mock host resolution without calling out to external resourc.
     protected def resolve_host(host : String) : Array(Socket::IPAddress)
       Socket::Addrinfo.resolve(host, "http", type: Socket::Type::STREAM).map(&.ip_address)
     end
 
-    # Checks if IPs are on an exclusion list (loopback, link-local, unspecified) that shouldn't be reached.
+    # Checks if an **ip** address is on an exclusion list (loopback, link-local, unspecified) that shouldn't be reached.
     #
     # Returns true if the IP is on the exclusion list, otherwise false.
     protected def disallowed_ip?(ip : Socket::IPAddress) : Bool
       ip.loopback? || ip.link_local? || ip.unspecified?
     end
 
-    # Resolves the URL host to IP and rejects addresses that are on the exclusion list.
+    # Resolves the **url** host to an IP and rejects addresses that are on the exclusion list.
     protected def validate_url_dest(url : URI) : Nil
       host = url.host
       raise YsplitError.new("'#{url}' has no host defined") unless host
@@ -121,7 +121,7 @@ module Crux::Commands
       end
     end
 
-    # Reads YAML content from a local file path (supports ~/ homedir expansion), streaming with MAX_BYTES enforced during read.
+    # Reads YAML content from a local file **path** (supports ~/ homedir expansion), streaming with MAX_BYTES enforced during read.
     #
     # Returns the file contents as a String.
     protected def read_local_file(path : String) : String
@@ -137,10 +137,10 @@ module Crux::Commands
     rescue ex : YsplitError
       raise ex
     rescue File::NotFoundError
-      error "File not found: #{path}"
+      error "File not found", path: path
       exit_program 1
     rescue ex : Exception
-      error "Could not read file: '#{path}': #{ex.message}"
+      error "Could not read file", path: path, err: ex
       exit_program 1
     end
 
@@ -159,10 +159,10 @@ module Crux::Commands
     # Ceiling on response body shown during debugging
     MAX_DEBUG_BODY_BYTES = 256
 
-    # Fetches YAML content from a remote HTTPS URL.
-    # Validates dest IP and follows up to MAX_REDIRECTS redirects (3xx in header).
-    # Streams up to MAX_BYTES size limit on the response body.
+    # Fetches YAML content from a remote HTTPS **url**, validating destinations, redirects, timeouts, and response limits. Follows up to **redirects_remaining** bounded count of HTTP redirects, defaulting to `MAX_REDIRECTS`.
+    #
     # Returns the HTTP response body.
+    #
     # Exits with an error on network failure, non-2XX status code, disallowed destination, or exceeded limits.
     protected def fetch_remote(url : URI, redirects_remaining : Int32 = MAX_REDIRECTS) : String
       validate_url_dest(url)
@@ -193,11 +193,14 @@ module Crux::Commands
           end
           result = sink.to_s
         else
-          # Drain a small slice of the body for debug only diagnostics
+          # Drain a bounded slice of the body response preview for debug only diagnostics.
           io = resp.body_io? || IO::Memory.new(resp.body)
           sink = IO::Memory.new
           IO.copy(io, sink, MAX_DEBUG_BODY_BYTES + 1)
-          debug "HTTP #{resp.status_code} truncated to #{MAX_DEBUG_BODY_BYTES}B: #{sink}"
+          debug "HTTP response rejected",
+            status: resp.status_code,
+            body_limit: MAX_DEBUG_BODY_BYTES,
+            body_preview: sink.to_s
           raise YsplitError.new("HTTP #{resp.status_code} from '#{url}'")
         end
       end

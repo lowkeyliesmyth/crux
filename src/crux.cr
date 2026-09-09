@@ -7,6 +7,7 @@ require "./commands/base"
 require "./commands/*"
 require "./commands/kube/*"
 require "./kube/*"
+require "etch"
 
 module Crux
   # Build metadata constants generated at compile time and consumed by the Version command

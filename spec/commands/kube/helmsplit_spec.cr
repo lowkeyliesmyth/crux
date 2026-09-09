@@ -1,8 +1,8 @@
 require "../../spec_helper"
+require "../../support/kube_manifest_fixtures"
 require "file_utils"
 
 # Test subclass wrapping and exposing private methods in Helmsplit
-
 class TestableHelmsplit < Crux::Commands::Helmsplit
   def test_resolve_chart(chart : String) : String
     resolve_chart(chart)
@@ -23,8 +23,13 @@ end
 
 # Mock Helm collaborator implementation for testing
 class MockHelm < Crux::Commands::Helmsplit::Helm
+  # Pre-rendered manifests acting as a standin for a real helm template execution's output.
+  property rendered_output : String?
+  # Control if this mock simulates a successful binary detection state.
   property? installed : Bool = true
+  # Control if this mock should simulate a success or a failure state.
   property? should_fail : Bool = false
+  # Capture the structured parameters that are passed into the template method for mock introspection.
   property template_calls = [] of {chart: String, version: String?, values: Array(String)}
 
   def template(chart : String, version : String?, values : Array(String)) : String
@@ -34,6 +39,9 @@ class MockHelm < Crux::Commands::Helmsplit::Helm
       raise Crux::Commands::Helmsplit::HelmsplitError.new("helm template failed with exit code 1:\nError: chart not found: bogustown")
     end
 
+    if output = @rendered_output
+      return output
+    end
     # Simulate the output we were getting from FAKE_HELM_ECHO_ARGS to help with verifying internal state
     String.build do |io|
       io << "ARG: template\n"
@@ -54,31 +62,45 @@ class MockHelm < Crux::Commands::Helmsplit::Helm
   end
 end
 
+# Executes helmsplit with the materialized **inputs** (command args and options) the command would be passed at real invocation by the cling wrapper, and an abstract **helm**.
+#
+# Returns the execution status code and captured stdout/err streams.
+private def execute_helmsplit(input : Array(String), helm : Crux::Commands::Helmsplit::Helm) : {Int32, String, String}
+  output = IO::Memory.new
+  errors = IO::Memory.new
+  command = Crux::Commands::Helmsplit.new(helm)
+  command.stdout = output
+  command.stderr = errors
+
+  status = command.execute(input)
+  {status, output.to_s, errors.to_s}
+end
+
 describe Crux::Commands::Helmsplit do
-  describe "#resolve_chart" do
+  describe "#resolve_chart", tags: "io" do
     subject = TestableHelmsplit.new
-    tmpdir = ""
+    workdir = ""
 
     before_each do
-      tmpdir = File.join(Dir.tempdir, "helmsplit_resolve_spec_#{Time.utc.to_unix_ms}")
-      Dir.mkdir_p(tmpdir)
+      workdir = File.join(Dir.tempdir, "helmsplit_resolve_spec_#{Time.utc.to_unix_ms}")
+      Dir.mkdir_p(workdir)
     end
 
     after_each do
-      FileUtils.rm_rf(tmpdir) if Dir.exists?(tmpdir)
+      FileUtils.rm_rf(workdir) if Dir.exists?(workdir)
     end
 
     context "with a valid local chart directory" do
       it "returns the expanded absolute path" do
-        File.write(File.join(tmpdir, "Chart.yaml"), "name: fake\nversion:  0.0.1\n")
-        subject.test_resolve_chart(tmpdir).should eq(File.expand_path(tmpdir))
+        File.write(File.join(workdir, "Chart.yaml"), "name: fake\nversion:  0.0.1\n")
+        subject.test_resolve_chart(workdir).should eq(File.expand_path(workdir))
       end
     end
 
     context "with a local dir missing a Chart.yaml" do
       it "raises HelmsplitError calling out Chart.yaml requirement" do
         expect_raises(Crux::Commands::Helmsplit::HelmsplitError, /Missing Chart.yaml/) do
-          subject.test_resolve_chart(tmpdir)
+          subject.test_resolve_chart(workdir)
         end
       end
     end
@@ -206,27 +228,149 @@ describe Crux::Commands::Helmsplit do
     end
   end
 
-  describe "#write_provenance" do
+  describe "#write_provenance", tags: "io" do
+    workdir = ""
+
+    before_each do
+      workdir = File.join(Dir.tempdir, "helmsplit_prov_#{Time.utc.to_unix_ms}")
+      Dir.mkdir_p(workdir)
+    end
+
+    after_each do
+      FileUtils.rm_rf(workdir) if Dir.exists?(workdir)
+    end
+
     it "records the -o overrides flag when present" do
-      tmpdir = File.join(Dir.tempdir, "helsplit_prov_#{Time.utc.to_unix_ms}")
-      Dir.mkdir_p(tmpdir)
-      begin
-        TestableHelmsplit.new.test_write_provenance(tmpdir, "repo/chart", nil, [] of String, nil, "overrides.kyaml")
-        File.read(File.join(tmpdir, "_PROVENANCE.md")).should contain("-o overrides.kyaml")
-      ensure
-        FileUtils.rm_rf(tmpdir)
-      end
+      TestableHelmsplit.new.test_write_provenance(workdir, "repo/chart", nil, [] of String, nil, "overrides.kyaml")
+      File.read(File.join(workdir, "_PROVENANCE.md")).should contain("-o overrides.kyaml")
     end
 
     it "omits the -o flag when absent" do
-      tmpdir = File.join(Dir.tempdir, "helmsplit_prov_#{Time.utc.to_unix_ms}")
-      Dir.mkdir_p(tmpdir)
-      begin
-        TestableHelmsplit.new.test_write_provenance(tmpdir, "repo/chart", nil, [] of String, nil, nil)
-        File.read(File.join(tmpdir, "_PROVENANCE.md")).should_not contain("-o")
-      ensure
-        FileUtils.rm_rf(tmpdir)
-      end
+      TestableHelmsplit.new.test_write_provenance(workdir, "repo/chart", nil, [] of String, nil, nil)
+      File.read(File.join(workdir, "_PROVENANCE.md")).should_not contain("-o")
+    end
+  end
+
+  describe "record emission verification", tags: "io" do
+    workdir = ""
+    outdir = ""
+    before_each do
+      workdir = File.join(Dir.tempdir, "helmsplit_record_spec_#{Time.utc.to_unix_ms}")
+      outdir = File.join(workdir, "outdir")
+      Dir.mkdir_p(outdir)
+    end
+
+    after_each do
+      FileUtils.rm_rf(workdir) if Dir.exists?(workdir)
+    end
+
+    it "reports missing Helm executable" do
+      helm = MockHelm.new
+      helm.installed = false
+
+      status, output, _errors = execute_helmsplit(
+        [outdir, "repo/chart"],
+        helm,
+      )
+
+      status.should eq(1)
+      output.should contain("ERRO Executable not found")
+      output.should contain("executable=helm")
+    end
+
+    it "reports Helm processing failures" do
+      helm = MockHelm.new
+      helm.should_fail = true
+
+      status, output, _errors = execute_helmsplit(
+        [outdir, "repo/chart"],
+        helm,
+      )
+
+      status.should eq(1)
+      output.should contain("err=")
+      output.should contain("helm template failed with exit code 1")
+      output.should contain("chart not found")
+    end
+
+    it "reports override failures" do
+      helm = MockHelm.new
+      helm.rendered_output = KubeManifestFixtures::VALID_SINGLE_DOC
+
+      overrides = File.join(workdir, "overrides.kyaml")
+      File.write(overrides, <<-KYAML)
+        ---
+        {
+          clusters: ["c1"],
+          output: "#{outdir}/overrides/${cluster}/override-${object}.yaml",
+          overrides: [{
+            configmap: "does-not-exist-will-error",
+            patches: [{
+              outerPath: "data[config.yaml]",
+              innerPath: "name",
+              value: "replacement",
+            }],
+          }],
+        }
+        KYAML
+
+      status, output, _errors = execute_helmsplit(
+        [outdir, "repo/chart", "--overrides", overrides],
+        helm,
+      )
+
+      status.should eq(1)
+      output.should contain("INFO Written")
+      output.should contain("ERRO Overrides processing failed")
+      output.should contain("ConfigMap source file not found")
+      # This execution failed, it should never emit a success record.
+      output.should_not contain("INFO Processing complete")
+
+      # The mocked chart "exists" so rendering was successful, only the override sub-step failed.
+      File.exists?(File.join(outdir, "my-app-deployment.yaml")).should be_true
+      File.exists?(File.join(outdir, "_PROVENANCE.md")).should be_true
+    end
+
+    it "emits manifest, override, and completion records after execution" do
+      helm = MockHelm.new
+      # We're not gonna pass in a real helm chart to render, so let's just pretend it happened.
+      helm.rendered_output = KubeManifestFixtures::CONFIGMAP_MULTILINE_DOC
+
+      overrides = File.join(workdir, "overrides.kyaml")
+      File.write(overrides, <<-KYAML)
+        ---
+        {
+          clusters: ["c1"],
+          output: "#{outdir}/overrides/${cluster}/override-${object}.yaml",
+          overrides: [{
+            configmap: "shield-cluster",
+            patches: [{
+              outerPath: "data[cluster-shield.yaml]",
+              innerPath: "cluster_config.name",
+              valueFrom: "cluster.name"
+            }],
+          }],
+        }
+        KYAML
+
+      status, output, _errors = execute_helmsplit(
+        [outdir, "repo/chart", "--overrides", overrides],
+        helm,
+      )
+
+      status.should eq(0)
+      lines = output.lines
+      lines.size.should eq(3)
+      lines[0].should contain("INFO Written")
+      lines[1].should contain("INFO Written")
+      lines[1].should contain("cluster=c1")
+      lines[2].should contain("INFO Processing complete")
+      lines[2].should contain("written=1")
+      lines[2].should contain("skipped=0")
+
+      File.exists?(File.join(outdir, "shield-cluster-configmap.yaml")).should be_true
+      File.exists?(File.join(outdir, "overrides", "c1", "override-shield-cluster.yaml")).should be_true
+      File.exists?(File.join(outdir, "_PROVENANCE.md")).should be_true
     end
   end
 end

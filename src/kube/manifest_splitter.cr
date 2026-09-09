@@ -3,7 +3,7 @@ require "yaml"
 module Crux::Kube
   # Encapsulates the core YAML splitting logic, separated from the CLI command class so it can be tested independently.
   #
-  # Given a multi-doc YAML string, splits each document into its own `<metadata.name>-<kind>.yaml` file (with optional prefix).
+  # Given a multi-doc YAML string, splits each document into its own `<metadata.name>-<kind>.yaml` file into a destination *outdir* (with optional *prefix* applied to each file).
   struct ManifestSplitter
     getter prefix : String?
     getter outdir : String
@@ -33,12 +33,12 @@ module Crux::Kube
       expanded_path.starts_with?(expanded_outdir)
     end
 
-    # Processes a multi-doc YAML string *content* and writes each doc to a separate file in `@outdir`.
+    # Splits multi-doc YAML **content** into distinct files in `@outdir` and emits operational records through a **logger**.
     #
-    # Docs that are null/empty or invalid K8s manifests are skipped with a warning.
+    # Docs that are null/empty or invalid K8s manifests are skipped with a warning. Raises when *content* is malformed.
     #
     # Returns a NamedTuple of `{written: count, skipped: count}`.
-    def process(content : String, out_io : IO = STDOUT, err_io : IO = STDERR) : {written: Int32, skipped: Int32}
+    def process(content : String, logger : Etch::Logger) : {written: Int32, skipped: Int32}
       Dir.mkdir_p(@outdir)
 
       docs = YAML.parse_all(content)
@@ -46,20 +46,24 @@ module Crux::Kube
       skipped = 0
 
       docs.each_with_index do |doc, i|
-        # Null docs occur from bare --- separators
+        # Null docs occur from bare --- separators.
         # Silently skip them.
         next if doc.raw.nil?
+        document = i + 1
         k8s_doc = Crux::Kube::K8sDoc.from_yaml(doc.to_yaml)
 
         unless k8s_doc.valid?
-          err_io.puts "Document #{i + 1} is invalid."
-          err_io.puts "Missing required 'apiVersion', 'kind' or 'metadata.name' fields, skipping.\n"
+          logger.warn "Skipping invalid doc",
+            document: document,
+            required_fields: "apiVersion, kind, metadata.name"
           skipped += 1
           next
         end
 
         unless safe_resource_name?(k8s_doc.resource_name)
-          err_io.puts "Skipping: Doc #{i + 1} has an invalid 'metadata.name' (#{k8s_doc.resource_name}).\n"
+          logger.warn "Skipping doc with invalid resource name",
+            document: document,
+            name: k8s_doc.resource_name
           skipped += 1
           next
         end
@@ -67,21 +71,24 @@ module Crux::Kube
         filename = build_filename(k8s_doc.resource_name, k8s_doc.resource_kind)
 
         unless write_path_inside_outdir?(filename)
-          err_io.puts "Skipping: Doc #{i + 1} resolved to a path outside outdir (#{filename}).\n"
+          logger.warn "Skipping doc outside output dir",
+            document: document,
+            path: filename
           skipped += 1
           next
         end
 
-        # TODO: Update out_io formatting to match Crux::Commands::Base#info, and Crux::Commands::Base#error
         begin
           # ConfigMaps may carry embedded YAML blobs as double-quoted flow style scalars.
           # Normalize to literal block scalar style for readability.
           rendered = k8s_doc.resource_kind == "ConfigMap" ? Crux::Kube::YamlBlock.emit(doc) : doc.to_yaml
           File.write(filename, rendered)
-          out_io.puts "Written: #{filename}\n"
+          logger.info "Written", path: filename
           written += 1
         rescue ex : Exception
-          err_io.puts "Failed to write #{filename}: #{ex.message}\n"
+          logger.warn "Failed to write",
+            path: filename,
+            err: ex
           skipped += 1
         end
       end
