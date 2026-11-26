@@ -1,0 +1,22 @@
+name: Publish Existing Tag
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing signed tag to publish (e.g. 0.4.0)"
+        type: string
+        required: true
+      dry_run:
+        description: "Build and verify packages without publishing"
+        type: boolean
+        default: false
+
+jobs:
+  recover:
+    if: inputs.tag != ''
+    uses: ./.github/workflows/release.yml
+    with:
+      existing_tag: ${{ inputs.tag }}
+      dry_run: ${{ inputs.dry_run }}
+    secrets: inherit
