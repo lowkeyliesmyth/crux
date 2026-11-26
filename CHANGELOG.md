@@ -1,3 +1,41 @@
+## 0.4.0 (2026-11-26)
+
+### Feat
+
+- **helmsplit**: add -o overrides flag for per-cluster ConfigMap patch override functionality (#19)
+- **ysplit**: normalize configmap data rendering to literal block scalars (#18)
+
+### Bug Fixes
+
+- **ysplit**: enforce size limits, add path traversal and SSRF protection (#16)
+
+### Refactor
+
+- route structured operational messages through etch (#23)
+- apply ameba 1.7.0 conformaance changes
+- **kube**: normalize namespacing split between commands and kube domain logic (#21)
+- **global**: extract global flags required for all commands (#17)
+
+### Docs
+
+- correct comment typos
+- **contributing**: add a contributing guide
+- **readme**: write some actually useful usage guidance docs (#20)
+- **agents**: cleanup unnecessary per-command task tracking
+
+### Tests
+
+- **kube**: split kube domain spec tests ouf of ysplit specs (#22)
+- **yaml**: correct fixture escape handling
+
+### Build System
+
+- update ameba to 1.7.0 and crystal to 1.21.0
+
+### CI
+
+- **release**: remove unnecessary docs publishing step
+
 ## 0.3.4 (2026-05-05)
 
 ### Bug Fixes
