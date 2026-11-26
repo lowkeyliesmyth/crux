@@ -10,6 +10,7 @@ on:
       - "spec/**"
       - "shard.yml"
       - "shard.lock"
+      - ".github/workflows/pr-coverage.yml"
   pull_request:
     branches:
       - main
@@ -18,6 +19,7 @@ on:
       - "spec/**"
       - "shard.yml"
       - "shard.lock"
+      - ".github/workflows/pr-coverage.yml"
 env:
   CRYSTAL_VERSION: "1.21.0"
 
@@ -25,9 +27,9 @@ jobs:
   coverage:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@v4.3.1
 
-      - uses: crystal-lang/install-crystal@cdf26dcd488490c9939e9d4d62cab169c9e4f20d # v1.8.2
+      - uses: crystal-lang/install-crystal@v1.10.0
         with:
           crystal: ${{ env.CRYSTAL_VERSION }}
 
@@ -39,7 +41,7 @@ jobs:
 
       - name: Cache kcov binary
         id: cache-kcov
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        uses: actions/cache@v4.3.0
         with:
           path: /usr/local/bin/kcov
           key: kcov-v43-${{ runner.os }}-${{ runner.arch }}
@@ -58,7 +60,7 @@ jobs:
           sudo make install
 
       - name: Cache shards
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        uses: actions/cache@v4.3.0
         with:
           path: lib
           key: shards-${{ runner.os }}-crystal-${{ env.CRYSTAL_VERSION }}-${{ hashFiles('shard.yml') }}
@@ -80,7 +82,7 @@ jobs:
         run: crystal tool unreachable --format=codecov ./all_specs.cr > ./coverage/unreachable.codecov.json
 
       - name: Upload to Codecov
-        uses: codecov/codecov-action@75cd11691c0faa626561e295848008c8a7dddffe #v5
+        uses: codecov/codecov-action@v5.5.4
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: "**/cov.xml,**/unreachable.codecov.json"

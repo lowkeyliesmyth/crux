@@ -30,15 +30,15 @@ jobs:
   ameba:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@v4.3.1
 
-      - uses: crystal-lang/install-crystal@cdf26dcd488490c9939e9d4d62cab169c9e4f20d # v1.8.2
+      - uses: crystal-lang/install-crystal@v1.10.0
         with:
           crystal: ${{ env.CRYSTAL_VERSION }}
 
       - name: Restore shards and ameba binary
         id: cache
-        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        uses: actions/cache/restore@v4.3.0
         with:
           path: |
             lib
@@ -61,7 +61,7 @@ jobs:
       # actions/cache saves in a post step gated on `post-if: success()`.
       - name: Save shards and ameba binary
         if: steps.cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        uses: actions/cache/save@v4.3.0
         with:
           path: |
             lib

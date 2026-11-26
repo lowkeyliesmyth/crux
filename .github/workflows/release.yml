@@ -19,30 +19,66 @@ on:
         required: false
         default: false
       dry_run:
-        description: "Dry run (no push, no release)"
+        description: "Build and verify packages without publishing"
         type: boolean
         required: false
         default: false
+  workflow_call:
+    inputs:
+      existing_tag:
+        type: string
+        required: true
+      dry_run:
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: crux-release
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
 
 env:
   CRYSTAL_VERSION: "1.21.0"
 
 jobs:
-  bump:
-    name: Bump version and tag
+  prepare:
+    name: Prepare release candidate
     runs-on: ubuntu-latest
     outputs:
-      version: ${{ steps.cz.outputs.version }}
-      tag: ${{ steps.cz.outputs.tag }}
+      version: ${{ steps.candidate.outputs.version }}
+      tag: ${{ steps.candidate.outputs.tag }}
+      sha: ${{ steps.candidate.outputs.sha }}
+      tag_object: ${{ steps.candidate.outputs.tag_object }}
+      prerelease: ${{ steps.candidate.outputs.prerelease }}
     steps:
       - name: Checkout
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        uses: actions/checkout@v4.3.1
         with:
           # cz walks the full commit history to compute the target version
           fetch-depth: 0
-          token: ${{ secrets.RELEASE_PAT }}
+          persist-credentials: false
+
+      - name: Validate dispatch
+        env:
+          EXISTING_TAG: ${{ inputs.existing_tag }}
+        run: |
+          if [[ "$GITHUB_REF" != refs/heads/main ]]; then
+            echo "::error::Dispatch this workflow from main"
+            exit 1
+          fi
+          if [[ -n "$EXISTING_TAG" && ! "$EXISTING_TAG" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Expected an existing version tag"
+            exit 1
+          fi
 
       - name: Configure git with SSH signing
+        if: inputs.existing_tag == ''
         env:
           SIGNING_KEY: ${{ secrets.SIGNING_SSH_KEY }}
         run: |
@@ -56,58 +92,95 @@ jobs:
           git config --global commit.gpgsign true
           git config --global user.signingkey ~/.ssh/signing_key
 
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+      - uses: actions/setup-python@v5.6.0
+        if: inputs.existing_tag == ''
         with:
           python-version: "3.12"
 
       - name: Install commitizen
-        run: pip install commitizen
+        if: inputs.existing_tag == ''
+        run: pip install 'commitizen==4.20.1'
 
-      - name: Bump version, tag, and capture release notes
-        id: cz
+      - name: Prepare commit, tag and release notes
+        id: candidate
+        env:
+          EXISTING_TAG: ${{ inputs.existing_tag }}
+          PRERELEASE: ${{ inputs.prerelease }}
+          SHAME: ${{ inputs.shame }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          GH_TOKEN: ${{ github.token }}
         run: |
-          PRE_FLAG=""
-          if [ "${{ inputs.prerelease }}" != "none" ]; then
-            PRE_FLAG="--prerelease ${{ inputs.prerelease }}"
+          mkdir candidate
+          if [[ -n "$EXISTING_TAG" ]]; then
+            TAG="$EXISTING_TAG"
+            VERSION="${TAG#v}"
+            if [[ "$VERSION" != "$(awk '/^version:/ {print $2; exit}' shard.yml)" ]]; then
+              echo "::error::Only the current version on main can be recovered"
+              exit 1
+            fi
+            git checkout --detach "refs/tags/$TAG"
+            # Recover the notes from the source being released, not the current main.
+            awk -v tag="$TAG" '
+              /^## / { if (found) exit; found = $2 == tag }
+              found { print }
+            ' CHANGELOG.md > candidate/release_notes.md
+          else
+            BASE="$(git rev-parse HEAD)"
+            CURRENT="$(cz version --project)"
+            # Refuse to bump past a release whose publication needs to be retried.
+            for PREVIOUS in "v$CURRENT" "$CURRENT"; do
+              if git rev-parse --verify --quiet "refs/tags/$PREVIOUS" >/dev/null; then
+                break
+              fi
+            done
+            git merge-base --is-ancestor "refs/tags/$PREVIOUS" HEAD
+            if [[ "$DRY_RUN" != true && "$(gh release view "$PREVIOUS" --json isDraft --jq .isDraft)" != false ]]; then
+              echo "::error::Publish the previous release before starting a new bump"
+              exit 1
+            fi
+            ARGS=(--yes --changelog --changelog-to-stdout)
+            if [[ "$PRERELEASE" != none ]]; then
+              ARGS+=(--prerelease "$PRERELEASE")
+            fi
+            if [[ "$SHAME" == true ]]; then
+              ARGS+=(--increment PATCH --allow-no-commit)
+            fi
+            git switch -C release-candidate
+            cz bump "${ARGS[@]}" > candidate/release_notes.md
+            VERSION="$(cz version --project)"
+            TAG="$(git tag --points-at HEAD)"
+            [[ "$TAG" == "v$VERSION" ]]
+            git bundle create candidate/source.bundle refs/heads/release-candidate "refs/tags/$TAG" "^$BASE"
           fi
-          DRY_FLAG=""
-          if [ "${{ inputs.dry_run }}" = "true" ]; then
-            DRY_FLAG="--dry-run"
+
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]
+          [[ "$VERSION" == "$(awk '/^version:/ {print $2; exit}' shard.yml)" ]]
+          test -s candidate/release_notes.md
+          TAG_OBJECT="$(git rev-parse "refs/tags/$TAG^{tag}")"
+          if [[ -n "$EXISTING_TAG" ]]; then
+            [[ "$(gh api "repos/$GITHUB_REPOSITORY/git/tags/$TAG_OBJECT" --jq .verification.verified)" == true ]]
           fi
-          INCREMENT_FLAG=""
-          if [ "${{ inputs.shame }}" = "true" ]; then
-            INCREMENT_FLAG="--increment PATCH"
+          IS_PRERELEASE=false
+          if [[ "$VERSION" == *-* ]]; then
+            IS_PRERELEASE=true
           fi
-          cz bump --yes --changelog --changelog-to-stdout $PRE_FLAG $INCREMENT_FLAG $DRY_FLAG > release_notes.md
+          {
+            echo "version=$VERSION"
+            echo "tag=$TAG"
+            echo "sha=$(git rev-parse HEAD)"
+            echo "tag_object=$TAG_OBJECT"
+            echo "prerelease=$IS_PRERELEASE"
+          } >> "$GITHUB_OUTPUT"
 
-          # In dry-run mode, no tag is created, so derive the *would-be* version from cz output
-          NEW_VERSION=$(cz version --project)
-          echo "version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
-          # shards only recognises release tags matching /^v\d/, so .cz.toml uses tag_format "v$version". cz reports the bare version, so re-add the prefix here to match the tag cz actually created.
-          echo "tag=v$NEW_VERSION" >> "$GITHUB_OUTPUT"
-
-      - name: Verify version alignment
-        run: |
-          CZ_VERSION=$(cz version --project)
-          SHARD_VERSION=$(awk '/^version:/ {print $2; exit}' shard.yml)
-          if [ "$CZ_VERSION" != "$SHARD_VERSION" ]; then
-            echo "::error::cz version ($CZ_VERSION) does not match shard.yml ($SHARD_VERSION)"
-            exit 1
-          fi
-
-      - name: Push commit and tag
-        if: inputs.dry_run != true
-        run: git push --follow-tags
-
-      - name: Upload release notes
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - name: Upload release candidate
+        uses: actions/upload-artifact@v4.6.2
         with:
-          name: release-notes
-          path: release_notes.md
+          name: candidate
+          path: candidate/
+          if-no-files-found: error
   build:
     name: Build ${{ matrix.target_os }}-${{ matrix.target_arch }}
-    needs: bump
-    if: inputs.dry_run != true
+    needs: prepare
     strategy:
       fail-fast: false
       matrix:
@@ -123,11 +196,30 @@ jobs:
             target_arch: arm64
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@v4.3.1
         with:
-          ref: ${{ needs.bump.outputs.tag }}
+          ref: ${{ inputs.existing_tag != '' && needs.prepare.outputs.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
 
-      - uses: crystal-lang/install-crystal@cdf26dcd488490c9939e9d4d62cab169c9e4f20d # v1.8.2
+      - uses: actions/download-artifact@v4.3.0
+        if: inputs.existing_tag == ''
+        with:
+          name: candidate
+          path: ${{ runner.temp }}/candidate
+
+      - name: Check out the exact candidate commit
+        env:
+          SHA: ${{ needs.prepare.outputs.sha }}
+        run: |
+          if [[ -f "$RUNNER_TEMP/candidate/source.bundle" ]]; then
+            git fetch --no-tags "$RUNNER_TEMP/candidate/source.bundle" refs/heads/release-candidate
+            [[ "$(git rev-parse FETCH_HEAD)" == "$SHA" ]]
+            git checkout --detach "$SHA"
+          fi
+          [[ "$(git rev-parse HEAD)" == "$SHA" ]]
+
+      - uses: crystal-lang/install-crystal@v1.10.0
         with:
           crystal: ${{ env.CRYSTAL_VERSION }}
 
@@ -160,70 +252,163 @@ jobs:
           otool -L dist/crux 2>/dev/null || ldd dist/crux
 
       - name: Package and checksum
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+          SHA: ${{ needs.prepare.outputs.sha }}
         run: |
-          BIN="crux-${{ needs.bump.outputs.version }}-${{ matrix.target_os }}-${{ matrix.target_arch }}"
+          BIN="crux-${VERSION}-${{ matrix.target_os }}-${{ matrix.target_arch }}"
           cd dist
           tar -czf "${BIN}.tar.gz" crux
           shasum -a 256 "${BIN}.tar.gz" > "${BIN}.tar.gz.sha256"
+          mkdir smoke
+          tar -xzf "${BIN}.tar.gz" -C smoke
+          OUTPUT="$(smoke/crux version)"
+          [[ "$OUTPUT" == "crux version: $VERSION [${SHA:0:8}]"* ]]
 
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@v4.6.2
         with:
           name: crux-${{ matrix.target_os }}-${{ matrix.target_arch }}
           path: |
-            dist/crux-${{ needs.bump.outputs.version }}-*
+            dist/crux-${{ needs.prepare.outputs.version }}-*
+          if-no-files-found: error
   release:
     name: Publish release
-    needs: [bump, build]
+    needs: [prepare, build]
     if: inputs.dry_run != true
     runs-on: ubuntu-latest
     steps:
-      - name: Download release artifacts
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+      - uses: actions/checkout@v4.3.1
         with:
-          name: release-artifacts
+          ref: ${{ inputs.existing_tag != '' && needs.prepare.outputs.sha || github.sha }}
+          fetch-depth: 0
+          token: ${{ secrets.RELEASE_PAT }}
+      - name: Download release candidate
+        uses: actions/download-artifact@v4.3.0
+        with:
+          name: candidate
+          path: candidate
+      - name: Download release artifacts
+        uses: actions/download-artifact@v4.3.0
+        with:
+          pattern: crux-*
           path: artifacts
           merge-multiple: true
-      - name: Create GitHub Release
+      - name: Stage and verify assets, then push the signed tag and publish
         env:
           GH_TOKEN: ${{ secrets.RELEASE_PAT }}
+          EXISTING_TAG: ${{ inputs.existing_tag }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+          TAG_OBJECT: ${{ needs.prepare.outputs.tag_object }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+          SHA: ${{ needs.prepare.outputs.sha }}
+          PRERELEASE: ${{ needs.prepare.outputs.prerelease }}
         run: |
-          PRERELEASE_FLAG=""
-          if [ "${{ inputs.prerelease }}" != "none" ]; then
-            PRERELEASE_FLAG="--prerelease"
+          ASSETS=()
+          for TARGET in darwin-arm64 linux-arm64 linux-x86_64; do
+            ARCHIVE="crux-${VERSION}-${TARGET}.tar.gz"
+            test -s "artifacts/$ARCHIVE"
+            test -s "artifacts/$ARCHIVE.sha256"
+            (cd artifacts && [[ "$(sha256sum "$ARCHIVE")" == "$(cat "$ARCHIVE.sha256")" ]])
+            ASSETS+=("artifacts/$ARCHIVE" "artifacts/$ARCHIVE.sha256")
+          done
+
+          if [[ -z "$EXISTING_TAG" ]]; then
+            git fetch --no-tags "$PWD/candidate/source.bundle" \
+              refs/heads/release-candidate:refs/heads/release-candidate \
+              "refs/tags/$TAG:refs/tags/$TAG"
+            [[ "$(git rev-parse refs/heads/release-candidate)" == "$SHA" ]]
+            [[ "$(git rev-parse "$SHA^")" == "$GITHUB_SHA" ]]
           fi
-          gh release create "${{ needs.bump.outputs.tag }}" \
-            --repo "$GITHUB_REPOSITORY" \
-            --title "${{ needs.bump.outputs.tag }}" \
-            --notes-file artifacts/release_notes.md \
-            $PRERELEASE_FLAG \
-            artifacts/crux-*
+          [[ "$(git rev-parse "refs/tags/$TAG^{commit}")" == "$SHA" ]]
+          [[ "$(git rev-parse "refs/tags/$TAG^{tag}")" == "$TAG_OBJECT" ]]
+          REMOTE_TAG="$(git ls-remote --refs origin "refs/tags/$TAG" | cut -f1)"
+          [[ -z "$REMOTE_TAG" || "$REMOTE_TAG" == "$TAG_OBJECT" ]]
+          if [[ -n "$EXISTING_TAG" ]]; then
+            [[ "$REMOTE_TAG" == "$TAG_OBJECT" ]]
+          else
+            git fetch --no-tags origin refs/heads/main:refs/remotes/origin/main
+            if ! git merge-base --is-ancestor "$SHA" origin/main; then
+              # A regular push rejects a stale candidate if main moved during the build.
+              git push origin "$SHA:refs/heads/main"
+            fi
+          fi
+
+          if ! RELEASE_ID="$(gh release view "$TAG" --json databaseId --jq .databaseId)"; then
+            ARGS=(--draft --title "$TAG" --target "$SHA" --notes-file candidate/release_notes.md)
+            if [[ "$PRERELEASE" == true ]]; then
+              ARGS+=(--prerelease)
+            fi
+            gh release create "$TAG" "${ARGS[@]}"
+            RELEASE_ID="$(gh release view "$TAG" --json databaseId --jq .databaseId)"
+          fi
+          RELEASE_API="repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID"
+          METADATA="$(gh api "$RELEASE_API")"
+          DRAFT="$(jq -r .draft <<< "$METADATA")"
+          jq -e --arg tag "$TAG" --argjson prerelease "$PRERELEASE" \
+            '.tag_name == $tag and .prerelease == $prerelease' <<< "$METADATA" >/dev/null
+          if [[ -z "$REMOTE_TAG" ]]; then
+            jq -e --arg sha "$SHA" '.draft and .target_commitish == $sha' <<< "$METADATA" >/dev/null
+          fi
+
+          # Resume partial uploads on a retry. Never replace published assets.
+          EXPECTED="$(sha256sum "${ASSETS[@]}" | jq -Rn '
+            [inputs | split("  ") | {name: (.[1] | split("/") | last), digest: ("sha256:" + .[0])}]
+            | sort_by(.name)
+          ')"
+          if [[ "$DRAFT" == true ]]; then
+            for ASSET in "${ASSETS[@]}"; do
+              NAME="${ASSET##*/}"
+              DIGEST="$(jq -r --arg name "$NAME" '.[] | select(.name == $name) | .digest' <<< "$EXPECTED")"
+              if ! jq -e --arg name "$NAME" --arg digest "$DIGEST" \
+                'any(.assets[]; .name == $name and .state == "uploaded" and .digest == $digest)' \
+                <<< "$METADATA" >/dev/null; then
+                gh release upload "$TAG" "$ASSET" --clobber
+              fi
+            done
+          fi
+          gh api "$RELEASE_API" | jq -e --argjson expected "$EXPECTED" '
+            (.assets | map(select(.state == "uploaded") | {name, digest}) | sort_by(.name)) == $expected
+          '
+
+          # Keep the SSH-signed tag. If interrupted after this push, rerun the
+          # publish job to finish the same draft, which already has every asset.
+          if [[ -z "$REMOTE_TAG" ]]; then
+            SUMMARY="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+            echo "If publishing is interrupted after the tag push, rerun failed jobs: $SUMMARY" >> "$GITHUB_STEP_SUMMARY"
+            git push origin "$TAG_OBJECT:refs/tags/$TAG"
+          fi
+          if [[ "$DRAFT" == true ]]; then
+            gh release edit "$TAG" --verify-tag --draft=false
+          fi
+          gh api "$RELEASE_API" --jq '.draft' | grep -qx false
   bump-tap:
     name: Bump homebrew-tap formula
-    needs: [bump, release]
-    if: inputs.dry_run != true && inputs.prerelease == 'none'
+    needs: [prepare, release]
+    if: inputs.dry_run != true && needs.prepare.outputs.prerelease == 'false'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout homebrew-tap
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        uses: actions/checkout@v4.3.1
         with:
           repository: lowkeyliesmyth/homebrew-tap
           token: ${{ secrets.TAP_RELEASE }}
           path: tap
 
       - name: Download release artifacts
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        uses: actions/download-artifact@v4.3.0
         with:
-          name: release-artifacts
+          pattern: crux-*
           path: artifacts
           merge-multiple: true
 
       - name: Render formula
         env:
-          VERSION: ${{ needs.bump.outputs.version }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+          TAG: ${{ needs.prepare.outputs.tag }}
         run: |
-          DARWIN_ARM64=$(awk '{print $1}' artifacts/crux-${VERSION}-darwin-arm64.tar.gz.sha256)
-          LINUX_ARM64=$(awk '{print $1}'  artifacts/crux-${VERSION}-linux-arm64.tar.gz.sha256)
-          LINUX_X86_64=$(awk '{print $1}' artifacts/crux-${VERSION}-linux-x86_64.tar.gz.sha256)
+          DARWIN_ARM64=$(awk '{print $1}' "artifacts/crux-${VERSION}-darwin-arm64.tar.gz.sha256")
+          LINUX_ARM64=$(awk '{print $1}' "artifacts/crux-${VERSION}-linux-arm64.tar.gz.sha256")
+          LINUX_X86_64=$(awk '{print $1}' "artifacts/crux-${VERSION}-linux-x86_64.tar.gz.sha256")
 
           cat > tap/Formula/crux.rb <<RUBY
           # AUTO-GENERATED by the crux release workflow.
@@ -238,18 +423,18 @@ jobs:
             on_macos do
               depends_on arch: :arm64
               on_arm do
-                url "https://github.com/lowkeyliesmyth/crux/releases/download/#{version}/crux-#{version}-darwin-arm64.tar.gz"
+                url "https://github.com/lowkeyliesmyth/crux/releases/download/${TAG}/crux-#{version}-darwin-arm64.tar.gz"
                 sha256 "${DARWIN_ARM64}"
               end
             end
 
             on_linux do
               on_arm do
-                url "https://github.com/lowkeyliesmyth/crux/releases/download/#{version}/crux-#{version}-linux-arm64.tar.gz"
+                url "https://github.com/lowkeyliesmyth/crux/releases/download/${TAG}/crux-#{version}-linux-arm64.tar.gz"
                 sha256 "${LINUX_ARM64}"
               end
               on_intel do
-                url "https://github.com/lowkeyliesmyth/crux/releases/download/#{version}/crux-#{version}-linux-x86_64.tar.gz"
+                url "https://github.com/lowkeyliesmyth/crux/releases/download/${TAG}/crux-#{version}-linux-x86_64.tar.gz"
                 sha256 "${LINUX_X86_64}"
               end
             end
@@ -267,25 +452,36 @@ jobs:
       - name: Open PR against homebrew-tap
         env:
           GH_TOKEN: ${{ secrets.TAP_RELEASE }}
-          VERSION: ${{ needs.bump.outputs.version }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+          TAG: ${{ needs.prepare.outputs.tag }}
           SIGNING_KEY: ${{ secrets.SIGNING_SSH_KEY }}
         working-directory: tap
         run: |
           BRANCH="bump-crux-${VERSION}"
-          mkdir -p ~/.ssh
-          printf '%s\n' "$SIGNING_KEY" > ~/.ssh/signing_key
-          chmod 600 ~/.ssh/signing_key
-          git config --global user.name "crux-release"
-          git config --global user.email "lowkey@kaffeinlabs.com"
-          git config --global gpg.format ssh
-          git config --global tag.gpgsign true
-          git config --global commit.gpgsign true
-          git config --global user.signingkey ~/.ssh/signing_key
-          git checkout -b "${BRANCH}"
-          git add Formula/crux.rb
-          git commit -m "chore(crux): bump to ${VERSION}"
-          git push origin "${BRANCH}"
+          if git diff --quiet -- Formula/crux.rb; then
+            exit 0
+          fi
+          if [[ -n "$(git ls-remote --heads origin "refs/heads/$BRANCH")" ]]; then
+            git fetch origin "refs/heads/$BRANCH:refs/remotes/origin/$BRANCH"
+            git show "origin/$BRANCH:Formula/crux.rb" | cmp - Formula/crux.rb
+          else
+            mkdir -p ~/.ssh
+            printf '%s\n' "$SIGNING_KEY" > ~/.ssh/signing_key
+            chmod 600 ~/.ssh/signing_key
+            git config user.name "crux-release"
+            git config user.email "lowkey@kaffeinlabs.com"
+            git config gpg.format ssh
+            git config commit.gpgsign true
+            git config user.signingkey ~/.ssh/signing_key
+            git checkout -b "${BRANCH}"
+            git add Formula/crux.rb
+            git commit -m "chore(crux): bump to ${VERSION}"
+            git push origin "${BRANCH}"
+          fi
+          if [[ -n "$(gh pr list --head "$BRANCH" --base main --state open --json url --jq '.[].url')" ]]; then
+            exit 0
+          fi
           gh pr create \
             --title "chore(crux): bump to ${VERSION}" \
-            --body  "Auto-generated by the crux release workflow on tag \`${VERSION}\`." \
+            --body  "Auto-generated by the crux release workflow on tag \`${TAG}\`." \
             --base main --head "${BRANCH}"
