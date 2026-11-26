@@ -334,7 +334,13 @@ jobs:
           fi
 
           if ! RELEASE_ID="$(gh release view "$TAG" --json databaseId --jq .databaseId)"; then
-            ARGS=(--draft --title "$TAG" --target "$SHA" --notes-file candidate/release_notes.md)
+            ARGS=(--draft --title "$TAG" --notes-file candidate/release_notes.md)
+            if [[ -n "$REMOTE_TAG" ]]; then
+              # An existing signed tag already identifies the release commit.
+              ARGS+=(--verify-tag)
+            else
+              ARGS+=(--target "$SHA")
+            fi
             if [[ "$PRERELEASE" == true ]]; then
               ARGS+=(--prerelease)
             fi
