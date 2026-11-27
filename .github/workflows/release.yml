@@ -226,6 +226,12 @@ jobs:
       - name: Install shards
         run: shards install --production
 
+      - name: Install Linux static libraries
+        if: matrix.target_os == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y binutils libssl-dev libpcre2-dev libyaml-dev zlib1g-dev
+
       - name: Build binary
         run: |
           mkdir -p dist
@@ -246,7 +252,16 @@ jobs:
               --link-flags "-L${SSL_PREFIX}/lib" \
               -o dist/crux
           else
-            crystal build src/main.cr --release -o dist/crux
+            # Reason: search these archives before the system shared libraries.
+            STATIC_LIB_DIR="$(mktemp -d)"
+            for library in libssl libcrypto libpcre2-8 libyaml libz; do
+              archive="$(cc -print-file-name="${library}.a")"
+              test -f "$archive" || { echo "Missing static archive: $library" >&2; exit 1; }
+              ln -s "$archive" "$STATIC_LIB_DIR/${library}.a"
+            done
+            crystal build src/main.cr --release \
+              --link-flags "-L${STATIC_LIB_DIR}" \
+              -o dist/crux
           fi
           echo "Linked dylibs:"
           otool -L dist/crux 2>/dev/null || ldd dist/crux
@@ -262,6 +277,19 @@ jobs:
           shasum -a 256 "${BIN}.tar.gz" > "${BIN}.tar.gz.sha256"
           mkdir smoke
           tar -xzf "${BIN}.tar.gz" -C smoke
+          if [ "${{ matrix.target_os }}" = "linux" ]; then
+            readelf -dW smoke/crux | awk '
+              /NEEDED/ {
+                soname = $NF
+                gsub(/[][]/, "", soname)
+                if (soname ~ /^lib(ssl|crypto|pcre2-8|yaml(-[^.]*)?|z)\.so(\.|$)/) {
+                  print "Unexpected shared library: " soname > "/dev/stderr"
+                  failed = 1
+                }
+              }
+              END { exit failed }
+            '
+          fi
           OUTPUT="$(smoke/crux version)"
           [[ "$OUTPUT" == "crux version: $VERSION [${SHA:0:8}]"* ]]
 
